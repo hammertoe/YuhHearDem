@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Google Gemini API
     google_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-2-flash-preview")
+    gemini_model: str = Field(default="gemini-3-flash-preview")
     gemini_temperature: float = Field(default=0.3)
 
     # Vector Embeddings
