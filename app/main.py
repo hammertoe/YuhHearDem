@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from core.logging_config import setup_logging
 from app.middleware import TimingMiddleware
+from api.routes import videos, search, chat
 
 settings = get_settings()
 
@@ -48,6 +49,10 @@ app.add_middleware(
 app.add_middleware(TimingMiddleware)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+app.include_router(videos.router)
+app.include_router(search.router)
+app.include_router(chat.router)
 
 
 @app.get("/", tags=["Root"])
@@ -90,7 +95,9 @@ async def api_info():
         "endpoints": {
             "health": "/health",
             "docs": "/docs" if settings.debug else "disabled",
-            "api_root": "/api",
+            "videos": "/api/videos",
+            "search": "/api/search",
+            "chat": "/api/query",
         },
     }
 
