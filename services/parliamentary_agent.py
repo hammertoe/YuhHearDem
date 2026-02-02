@@ -9,7 +9,7 @@ class ParliamentaryAgent:
 
     def __init__(self, gemini_client: GeminiClient):
         """Initialize agent with Gemini client.
-        
+
         Args:
             gemini_client: Gemini client for function calling
         """
@@ -39,13 +39,19 @@ class ParliamentaryAgent:
 
     def _build_agent_prompt(self, query: str, tools: Dict[str, callable]) -> str:
         """Build prompt for agentic query processing."""
-        tools_description = "\n".join([
-            f"  - {name}: {desc}" for name, desc in [
-                ("find_entity", "Search for entities by name or type"),
-                ("get_relationships", "Get relationships between entities"),
-                ("get_mentions", "Get where entities are mentioned with timestamps"),
+        tools_description = "\n".join(
+            [
+                f"  - {name}: {desc}"
+                for name, desc in [
+                    ("find_entity", "Search for entities by name or type"),
+                    ("get_relationships", "Get relationships between entities"),
+                    (
+                        "get_mentions",
+                        "Get where entities are mentioned with timestamps",
+                    ),
+                ]
             ]
-        ])
+        )
 
         return f"""You are an AI assistant for the Barbados Parliament knowledge graph. Your role is to help users query parliamentary sessions, find information about legislation, and understand relationships between speakers and topics.
 
@@ -74,10 +80,14 @@ Begin your analysis and response."""
         """Create tools configuration for Gemini function calling."""
         function_declarations = []
         for name, func in tools.items():
-            function_declarations.append({
-                "name": name,
-                "description": func.__doc__ if hasattr(func, "__doc__") else f"Tool: {name}",
-            })
+            function_declarations.append(
+                {
+                    "name": name,
+                    "description": func.__doc__
+                    if hasattr(func, "__doc__")
+                    else f"Tool: {name}",
+                }
+            )
 
         return {
             "function_declarations": function_declarations,
@@ -90,8 +100,11 @@ Begin your analysis and response."""
                 model="gemini-2-flash-preview",
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    tools=[types.FunctionDeclaration(**decl) for decl in tools_config["function_declarations"]]
-                )
+                    tools=[
+                        types.FunctionDeclaration(**decl)
+                        for decl in tools_config["function_declarations"]
+                    ]
+                ),
             )
             return response.json()
         except Exception as e:
@@ -145,31 +158,37 @@ Begin your analysis and response."""
 
         if "entities" in function_result:
             for entity in function_result.get("entities", []):
-                sources.append({
-                    "type": "entity",
-                    "id": entity.get("entity_id"),
-                    "name": entity.get("name"),
-                    "description": entity.get("description", ""),
-                })
+                sources.append(
+                    {
+                        "type": "entity",
+                        "id": entity.get("entity_id"),
+                        "name": entity.get("name"),
+                        "description": entity.get("description", ""),
+                    }
+                )
 
         if "relationships" in function_result:
             for rel in function_result.get("relationships", []):
-                sources.append({
-                    "type": "relationship",
-                    "source_id": rel.get("source_id"),
-                    "target_id": rel.get("target_id"),
-                    "relation_type": rel.get("relation_type"),
-                    "evidence": rel.get("evidence", ""),
-                })
+                sources.append(
+                    {
+                        "type": "relationship",
+                        "source_id": rel.get("source_id"),
+                        "target_id": rel.get("target_id"),
+                        "relation_type": rel.get("relation_type"),
+                        "evidence": rel.get("evidence", ""),
+                    }
+                )
 
         if "mentions" in function_result:
             for mention in function_result.get("mentions", []):
-                sources.append({
-                    "type": "mention",
-                    "entity_id": mention.get("entity_id"),
-                    "video_id": mention.get("video_id", ""),
-                    "timestamp": mention.get("timestamp", ""),
-                    "context": mention.get("context", ""),
-                })
+                sources.append(
+                    {
+                        "type": "mention",
+                        "entity_id": mention.get("entity_id"),
+                        "video_id": mention.get("video_id", ""),
+                        "timestamp": mention.get("timestamp", ""),
+                        "context": mention.get("context", ""),
+                    }
+                )
 
         return sources
