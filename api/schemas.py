@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class HealthResponse(BaseModel):
     """Health check response"""
+
     status: str = Field(default="healthy")
     database_connected: bool = False
     version: str = Field(default="0.1.0")
@@ -15,6 +16,7 @@ class HealthResponse(BaseModel):
 
 class VideoBase(BaseModel):
     """Base video schema"""
+
     youtube_id: str
     youtube_url: str
     title: str
@@ -26,11 +28,13 @@ class VideoBase(BaseModel):
 
 class VideoCreate(VideoBase):
     """Video creation schema"""
+
     transcript: dict
 
 
 class VideoResponse(VideoBase):
     """Video response schema"""
+
     id: UUID
     transcript_processed_at: Optional[datetime] = None
     created_at: datetime
@@ -39,6 +43,7 @@ class VideoResponse(VideoBase):
 
 class SpeakerBase(BaseModel):
     """Base speaker schema"""
+
     canonical_id: str
     name: str
     title: Optional[str] = None
@@ -48,6 +53,7 @@ class SpeakerBase(BaseModel):
 
 class SpeakerResponse(SpeakerBase):
     """Speaker response schema"""
+
     id: UUID
     aliases: List[str] = []
     pronoun: Optional[str] = None
@@ -58,6 +64,7 @@ class SpeakerResponse(SpeakerBase):
 
 class EntityBase(BaseModel):
     """Base entity schema"""
+
     entity_id: str
     entity_type: str
     name: str
@@ -66,6 +73,7 @@ class EntityBase(BaseModel):
 
 class EntityResponse(EntityBase):
     """Entity response schema"""
+
     id: UUID
     aliases: List[str] = []
     description: Optional[str] = None
@@ -76,12 +84,14 @@ class EntityResponse(EntityBase):
 
 class SessionCreate(BaseModel):
     """Session creation schema"""
+
     session_id: str
     user_id: str
 
 
 class SessionResponse(BaseModel):
     """Session response schema"""
+
     id: UUID
     session_id: str
     user_id: str
@@ -92,6 +102,7 @@ class SessionResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     """Message creation schema"""
+
     session_id: UUID
     role: str
     content: str
@@ -100,6 +111,7 @@ class MessageCreate(BaseModel):
 
 class MessageResponse(BaseModel):
     """Message response schema"""
+
     id: UUID
     session_id: UUID
     role: str
@@ -110,6 +122,7 @@ class MessageResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     """Query request schema"""
+
     query: str
     user_id: str
     session_id: Optional[str] = None
@@ -117,12 +130,14 @@ class QueryRequest(BaseModel):
 
 class ResponseCard(BaseModel):
     """Response card for structured output"""
+
     summary: str
     details: str
 
 
 class StructuredResponse(BaseModel):
     """Structured response for chat"""
+
     intro_message: str
     response_cards: List[ResponseCard]
     follow_up_suggestions: List[str]
@@ -130,6 +145,7 @@ class StructuredResponse(BaseModel):
 
 class QueryResponse(BaseModel):
     """Query response schema"""
+
     session_id: str
     user_id: str
     message_id: str
@@ -140,5 +156,6 @@ class QueryResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Error response"""
+
     detail: str
     status: str = Field(default="error")
