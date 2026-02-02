@@ -8,6 +8,7 @@ from typing import Optional, List
 @dataclass
 class Sentence:
     """Single sentence with timestamp"""
+
     start_time: str  # Format: "XmYsZms"
     text: str
 
@@ -15,6 +16,7 @@ class Sentence:
 @dataclass
 class SpeechBlock:
     """Block of consecutive sentences from same speaker"""
+
     speaker_name: str
     speaker_id: Optional[str] = None
     sentences: List[Sentence] = None
@@ -23,6 +25,7 @@ class SpeechBlock:
 @dataclass
 class TranscriptAgendaItem:
     """Agenda item within transcript"""
+
     topic_title: str
     speech_blocks: List[SpeechBlock] = None
     bill_id: Optional[str] = None
@@ -32,6 +35,7 @@ class TranscriptAgendaItem:
 @dataclass
 class SessionTranscript:
     """Complete session transcript"""
+
     session_title: str
     date: datetime
     chamber: str  # 'senate' | 'house'
