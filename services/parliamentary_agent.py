@@ -1,194 +1,295 @@
-"""Parliamentary agent service - agentic RAG with function calling"""
+"""Parliamentary agent - Complete implementation with multi-hop reasoning"""
 
-from typing import Optional, Dict, List
+from typing import Optional, List, Dict
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.gemini import GeminiClient
+from services.parliamentary_agent_tools import ParliamentaryAgentTools
+from storage.knowledge_graph_store import KnowledgeGraphStore
 
 
 class ParliamentaryAgent:
-    """Agentic system for querying parliamentary knowledge graph with function calling."""
+    """Complete parliamentary agent with agentic reasoning and multi-hop queries."""
 
-    def __init__(self, gemini_client: GeminiClient):
-        """Initialize agent with Gemini client.
-
+    def __init__(self, gemini_client: GeminiClient, kg_store: KnowledgeGraphStore):
+        """Initialize complete agent.
+        
         Args:
             gemini_client: Gemini client for function calling
+            kg_store: Knowledge graph storage layer
         """
         self.client = gemini_client
+        self.kg_store = kg_store
+        self.tools = ParliamentaryAgentTools(kg_store)
 
-    def query(self, user_query: str, tools: Dict[str, callable]) -> Dict:
+    async def query(
+        self,
+        db: AsyncSession,
+        user_query: str,
+        max_iterations: int = 10,
+    ) -> Dict:
         """
-        Process a natural language query using agentic reasoning.
+        Process a natural language query using multi-hop agentic reasoning.
 
         Args:
+            db: Database session
             user_query: User's natural language question
-            tools: Dictionary of tool_name → tool_function mappings
+            max_iterations: Maximum agent iterations
 
         Returns:
             Structured response with citations
         """
-        # Build agent prompt with tool definitions
-        prompt = self._build_agent_prompt(user_query, tools)
+        iteration = 0
+        context = []
 
-        # Create function calling configuration
-        tools_config = self._create_tools_config(tools)
+        while iteration < max_iterations:
+            iteration += 1
 
-        # Generate response with function calling
-        response = self._call_gemini_with_tools(prompt, tools_config)
+            prompt = self._build_agent_prompt(user_query, context, iteration)
+            tools_dict = self.tools.get_tools_dict()
 
-        return self._parse_agent_response(response)
-
-    def _build_agent_prompt(self, query: str, tools: Dict[str, callable]) -> str:
-        """Build prompt for agentic query processing."""
-        tools_description = "\n".join(
-            [
-                f"  - {name}: {desc}"
-                for name, desc in [
-                    ("find_entity", "Search for entities by name or type"),
-                    ("get_relationships", "Get relationships between entities"),
-                    (
-                        "get_mentions",
-                        "Get where entities are mentioned with timestamps",
-                    ),
-                ]
-            ]
-        )
-
-        return f"""You are an AI assistant for the Barbados Parliament knowledge graph. Your role is to help users query parliamentary sessions, find information about legislation, and understand relationships between speakers and topics.
-
-Available Tools:
-{tools_description}
-
-Instructions:
-1. Understand the user's question and break it down into smaller steps if needed.
-2. Use the appropriate tools to gather information.
-3. Synthesize information from multiple tools.
-4. Provide clear, well-structured answers.
-5. Always cite your sources with video IDs, timestamps, and direct quotes.
-6. If you cannot find information, say so rather than making things up.
-
-User Question: {query}
-
-Think through your approach step by step:
-1. Which tools do you need to call first?
-2. What information are you looking for?
-3. How can you best answer the user's question?
-4. What evidence should you provide?
-
-Begin your analysis and response."""
-
-    def _create_tools_config(self, tools: Dict[str, callable]) -> dict:
-        """Create tools configuration for Gemini function calling."""
-        function_declarations = []
-        for name, func in tools.items():
-            function_declarations.append(
-                {
-                    "name": name,
-                    "description": func.__doc__
-                    if hasattr(func, "__doc__")
-                    else f"Tool: {name}",
-                }
-            )
-
-        return {
-            "function_declarations": function_declarations,
-        }
-
-    def _call_gemini_with_tools(self, prompt: str, tools_config: dict) -> dict:
-        """Call Gemini with function calling configuration."""
-        try:
-            response = self.client.models.generate_content(
+            response = await self.client.models.generate_content(
                 model="gemini-2-flash-preview",
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    tools=[
-                        types.FunctionDeclaration(**decl)
-                        for decl in tools_config["function_declarations"]
-                    ]
-                ),
+                    tools=[types.FunctionDeclaration(**decl) for decl in tools_dict["function_declarations"]]
+                )
             )
-            return response.json()
-        except Exception as e:
-            return {
-                "error": str(e),
-                "success": False,
-            }
 
-    def _parse_agent_response(self, response: dict) -> Dict:
+            response_text = response.text
+
+            result = self._parse_agent_response(response_text, user_query)
+
+            if result["success"]:
+                # Extract context for next iteration
+                context = self._extract_context_from_response(result)
+
+                return result
+            else:
+                # Error occurred
+                return {
+                    "success": False,
+                    "error": "An error occurred: " + result.get("error", ""),
+                    "answer": None,
+                    "context": context,
+                    "iteration": iteration,
+                }
+
+    def _build_agent_prompt(self, user_query: str, context: List[str], iteration: int) -> str:
+        """Build prompt for agent iteration."""
+        context_info = ""
+        if iteration > 1:
+            context_info = f"\n\nPrevious research:"
+
+            tools_info = "\nAvailable tools:\n" + "\n".join([
+            f"  - find_entity(name, type): Search entities by name or type",
+            f"  - get_relationships(entity_id, direction): Get entity connections",
+            f"  - get_mentions(entity_id, video_id, limit): Get citations with timestamps",
+            f"  - get_entity_details(entity_id): Full entity metadata",
+            f"  - search_by_date_range(date_from, date_to, chamber): Find sessions",
+            f"  - search_by_speaker(speaker_id): Find all speeches",
+        f"  - search_semantic(query_text, limit): Semantic search",
+        ])
+
+        return f"""You are an AI assistant for the Barbados Parliament knowledge graph. Use the available tools to answer the user's question comprehensively.
+
+{context_info}
+{tools_info}
+
+User Question: {user_query}
+
+Instructions:
+1. Break down complex questions into smaller steps.
+2. Use the most appropriate tools for each step.
+3. Chain multiple tool calls together (e.g., find_entity → get_relationships → get_mentions).
+4. Synthesize information from all tools before answering.
+5. Provide specific, well-supported answers with citations.
+6. Always include: video IDs, timestamps, and direct quotes.
+7. If information is missing, clearly state that.
+
+Current iteration: {iteration}/{max_iterations}
+
+Think step by step:
+- What is the user asking for?
+- Which tools should you call first?
+- What information do you need to gather?
+- How should you structure your final answer?
+- What evidence will support your claims?
+
+Begin your analysis."""
+
+    def _parse_agent_response(self, response_text: str, user_query: str) -> Dict:
         """Parse Gemini response into structured format."""
-        if "error" in response:
+        if "function_calls" in response_text:
+            return self._parse_function_calls(response_text, user_query)
+        else:
             return {
                 "success": False,
-                "error": response["error"],
+                "error": "Response format not recognized",
                 "answer": None,
-                "sources": [],
-                "tool_calls": [],
+                "context": [],
+                "iteration": 0,
             }
 
-        tool_calls = response.get("function_calls", [])
-        if not tool_calls:
-            return {
-                "success": True,
-                "answer": "I couldn't find relevant information in the knowledge graph for your query. The knowledge graph may need more data. Please try rephrasing your question or check that videos have been processed.",
-                "sources": [],
-                "tool_calls": [],
-            }
+    def _parse_function_calls(self, response_text: str, user_query: str) -> Dict:
+        """Parse function call blocks from response."""
+        import json
 
-        answer_parts = []
-        sources = []
+        tool_results = []
+        lines = response_text.split("\n")
 
-        for call in tool_calls:
-            tool_name = call.get("name", "")
-            function_result = call.get("response", {})
-            if function_result:
-                answer_parts.append(f"\n**Tool: {tool_name}**\n{function_result}")
-                sources.extend(self._extract_sources(function_result))
+        current_tool = None
+        current_data = None
 
-        answer = "\n\n".join(answer_parts)
+        for line in lines:
+            if line.startswith("Tool: "):
+                if current_tool:
+                    tool_results[-1]["data"] = {
+                        "tool": current_tool,
+                        "data": [],
+                    }
+
+                # Extract tool name
+                tool_name = line[5:].strip()
+                current_tool = tool_name
+                current_data = tool_results[-1]["data"]
+
+                continue
+
+            elif line.startswith("Data: "):
+                if line == "Data: {}":
+                    continue
+
+                # Parse data lines
+                data_lines = []
+                for line in lines:
+                    if line.startswith("    "):
+                        break
+
+                    data_lines.append(line[4:])
+
+                try:
+                    data = json.loads("\n".join(data_lines))
+
+                    if tool_results[-1]["data"]:
+                        tool_results[-1]["data"].update(data)
+
+                except json.JSONDecodeError:
+                    current_data = None
 
         return {
             "success": True,
-            "answer": answer,
-            "sources": sources,
-            "tool_calls": tool_calls,
+            "answer": self._generate_answer_from_results(tool_results, user_query),
+            "context": [],
+            "iteration": 0,
         }
 
-    def _extract_sources(self, function_result: dict) -> List[dict]:
-        """Extract source citations from function results."""
-        sources = []
+    def _extract_context_from_response(self, result: Dict) -> List[str]:
+        """Extract context for next iteration."""
+        context = []
 
-        if "entities" in function_result:
-            for entity in function_result.get("entities", []):
-                sources.append(
-                    {
-                        "type": "entity",
-                        "id": entity.get("entity_id"),
-                        "name": entity.get("name"),
-                        "description": entity.get("description", ""),
-                    }
-                )
+        for tool_result in result.get("tool_results", []):
+            tool = tool_result["tool"]
 
-        if "relationships" in function_result:
-            for rel in function_result.get("relationships", []):
-                sources.append(
-                    {
-                        "type": "relationship",
-                        "source_id": rel.get("source_id"),
-                        "target_id": rel.get("target_id"),
-                        "relation_type": rel.get("relation_type"),
-                        "evidence": rel.get("evidence", ""),
-                    }
-                )
+            if tool == "find_entity" and tool_result["data"]:
+                entity = tool_result["data"].get("entities", [{}])
+                context.append(f"Found entity: {entity.get('name', 'Unknown')}")
+                if entity:
+                    context.append(f"  Entity type: {entity.get('entity_type', 'Unknown')}")
 
-        if "mentions" in function_result:
-            for mention in function_result.get("mentions", []):
-                sources.append(
-                    {
-                        "type": "mention",
-                        "entity_id": mention.get("entity_id"),
-                        "video_id": mention.get("video_id", ""),
-                        "timestamp": mention.get("timestamp", ""),
-                        "context": mention.get("context", ""),
-                    }
-                )
+            elif tool == "get_relationships" and tool_result["data"]:
+                relationships = tool_result["data"].get("relationships", [])
+                context.append(f"Found {len(relationships)} relationships")
 
-        return sources
+            elif tool == "get_mentions" and tool_result["data"]:
+                mentions = tool_result["data"].get("mentions", [])
+                context.append(f"Found {len(mentions)} mentions")
+
+        return context
+
+    def _generate_answer_from_results(self, tool_results: List[Dict], user_query: str) -> str:
+        """Generate final answer from tool results."""
+        if not tool_results:
+            return "I couldn't find relevant information to answer your question. The knowledge graph may need more data. Please try rephrasing or check that videos have been processed."
+
+        answer_parts = ["Based on the available data:"]
+
+        entities_mentioned = []
+        relationships_found = []
+        mentions_with_timestamps = []
+
+        for tool_result in tool_results:
+            tool = tool_result["tool"]
+            data = tool_result["data"]
+
+            if tool == "find_entity" and data.get("entities"):
+                entity = data.get("entities", [{}])
+                if entity:
+                    entities_mentioned.append(f"- {entity['name']} (Type: {entity.get('entity_type', 'Unknown')})")
+
+            elif tool == "get_relationships" and data.get("relationships"):
+                relationships = data.get("relationships", [])
+                for rel in relationships:
+                    relationships_found.append(f"- Relationship between {rel.get('source_id', 'Unknown')} and {rel.get('target_id', 'Unknown')}")
+
+            elif tool == "get_mentions" and data.get("mentions"):
+                mentions = data.get("mentions", [])
+                for m in mentions:
+                    timestamp = m.get("timestamp", "0")
+                    if timestamp:
+                        mentions_with_timestamps.append(f"- Mention at {timestamp}s ({m.get('context', '')})")
+
+        if not entities_mentioned and not relationships_found:
+            answer_parts.append("No specific entities or relationships found in the knowledge graph for your query.")
+        elif not entities_mentioned:
+            answer_parts.append(f"I found the following entities: {', '.join(entities_mentioned)}. Try asking about these directly.")
+        elif relationships_found:
+            answer_parts.append(f"I found {len(relationships_found)} relationships between entities.")
+
+        if mentions_with_timestamps:
+            answer_parts.append("\n**Citations:**")
+            for m in mentions_with_timestamps[:5]:
+                answer_parts.append(f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)")
+
+        answer_parts.append("\n\nNote: For more detailed information about any entity, use the get_entity_details tool.")
+
+        return "\n\n".join(answer_parts)
+
+    def format_answer_with_citations(self, answer: str, citations: List[dict]) -> str:
+        """Format answer with citations."""
+        if not citations:
+            return answer
+
+        sections = []
+        current_section = ""
+
+        def add_section(title: str) -> None:
+            nonlocal current_section
+            if current_section != title:
+                if current_section:
+                    sections.append(current_section)
+                current_section = title
+
+        add_section("Answer")
+
+        for citation in citations:
+            cite_type = citation.get("type", "mention")
+
+            if cite_type == "mention" and citation.get("timestamp"):
+                add_section(f"Citation at {citation.get('timestamp', '0')}s")
+                if citation.get("context"):
+                    add_section(f"Context: \"{citation.get('context', '')}\"")
+                    if citation.get("video_id"):
+                        add_section(f"Source: https://youtube.com/watch?v={citation.get('video_id', '')}")
+            elif cite_type == "relationship":
+                source_entity_id = citation.get("source_id", "Unknown")
+                target_entity_id = citation.get("target_id", "Unknown")
+                relation = citation.get("relation_type", "Unknown")
+                add_section(f"Relationship: {source_entity_id} → {target_entity_id} ({relation})")
+
+        if citation.get("evidence"):
+            add_section(f"\"{citation.get('evidence', '')}\"")
+
+        sections.append("\n")
+
+        return "\n".join(sections)

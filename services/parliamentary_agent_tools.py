@@ -11,7 +11,7 @@ class ParliamentaryAgentTools:
 
     def __init__(self, knowledge_store: KnowledgeGraphStore):
         """Initialize tools with knowledge graph store.
-        
+
         Args:
             knowledge_store: Knowledge graph storage layer
         """
@@ -123,7 +123,7 @@ class ParliamentaryAgentTools:
                 "status": "success",
                 "data": {
                     "entity": entity,
-                "metadata": {
+                    "metadata": {
                         "aliases": entity.get("aliases", []),
                         "importance_score": entity.get("importance_score", 0),
                     },
@@ -154,7 +154,9 @@ class ParliamentaryAgentTools:
         Returns:
             Tool response for Gemini
         """
-        videos = await self.kg_store.search_by_date_range(db, date_from, date_to, chamber)
+        videos = await self.kg_store.search_by_date_range(
+            db, date_from, date_to, chamber
+        )
 
         return {
             "status": "success",
@@ -225,10 +227,18 @@ class ParliamentaryAgentTools:
         """
         return {
             "find_entity": lambda db, **kwargs: self.find_entity(db, **kwargs),
-            "get_relationships": lambda db, **kwargs: self.get_relationships(db, **kwargs),
+            "get_relationships": lambda db, **kwargs: self.get_relationships(
+                db, **kwargs
+            ),
             "get_mentions": lambda db, **kwargs: self.get_mentions(db, **kwargs),
-            "get_entity_details": lambda db, **kwargs: self.get_entity_details(db, **kwargs),
-            "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(db, **kwargs),
-            "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(db, **kwargs),
+            "get_entity_details": lambda db, **kwargs: self.get_entity_details(
+                db, **kwargs
+            ),
+            "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(
+                db, **kwargs
+            ),
+            "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(
+                db, **kwargs
+            ),
             "search_semantic": lambda db, **kwargs: self.search_semantic(db, **kwargs),
         }
