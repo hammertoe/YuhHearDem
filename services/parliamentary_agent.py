@@ -37,10 +37,12 @@ class ParliamentaryAgent:
             max_iterations: Maximum agent iterations
 
         Returns:
-            Structured response with citations
+            Structured response with citations and entities
         """
         iteration = 0
         context = []
+
+        entities_found = []
 
         while iteration < max_iterations:
             iteration += 1
@@ -64,16 +66,27 @@ class ParliamentaryAgent:
             result = self._parse_agent_response(response_text, user_query)
 
             if result["success"]:
+                # Extract entities found during this iteration
+                entities = self._extract_entities_from_result(result)
+                entities_found.extend(entities)
+
                 # Extract context for next iteration
                 context = self._extract_context_from_response(result)
 
-                return result
+                return {
+                    "success": True,
+                    "answer": self._generate_answer_from_results([result], user_query),
+                    "entities": entities_found,
+                    "context": context,
+                    "iteration": iteration,
+                }
             else:
                 # Error occurred
                 return {
                     "success": False,
                     "error": "An error occurred: " + result.get("error", ""),
                     "answer": None,
+                    "entities": entities_found,
                     "context": context,
                     "iteration": iteration,
                 }
@@ -215,6 +228,28 @@ Begin your analysis."""
                 context.append(f"Found {len(mentions)} mentions")
 
         return context
+
+    def _extract_entities_from_result(self, result: Dict) -> List[Dict]:
+        """Extract entities from tool results."""
+        entities = []
+
+        for tool_result in result.get("tool_results", []):
+            tool = tool_result["tool"]
+            data = tool_result.get("data")
+
+            if tool == "find_entity" and data:
+                entity_data = data.get("entities", [])
+                if entity_data and len(entity_data) > 0:
+                    entity = entity_data[0]
+                    entities.append(
+                        {
+                            "entity_id": entity.get("entity_id", ""),
+                            "name": entity.get("name", ""),
+                            "type": entity.get("entity_type", ""),
+                        }
+                    )
+
+        return entities
 
     def _generate_answer_from_results(
         self, tool_results: List[Dict], user_query: str

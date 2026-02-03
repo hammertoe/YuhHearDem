@@ -89,7 +89,7 @@ async def process_query(
         answer = agent_response.get("answer", "")
 
         assistant_response = StructuredResponse(
-            intro_message="Based on my analysis of the parliamentary records:",
+            intro_message="Based on my analysis of parliamentary records:",
             response_cards=[
                 ResponseCard(
                     summary="Analysis Complete",
@@ -102,6 +102,11 @@ async def process_query(
                 "Show me all mentions",
             ],
         )
+
+        structured_response_dict = assistant_response.model_dump()
+        if agent_response.get("entities"):
+            structured_response_dict["entities"] = agent_response["entities"]
+
     else:
         assistant_response = StructuredResponse(
             intro_message="I encountered an issue while processing your query:",
@@ -117,6 +122,7 @@ async def process_query(
                 "Browse recent sessions",
             ],
         )
+        structured_response_dict = assistant_response.model_dump()
 
     assistant_message = Message(
         session_id=session.id,
