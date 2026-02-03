@@ -288,3 +288,159 @@ class TestChatAPI:
 
         assert response.status_code == 404
         assert "Session not found" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_get_session_graph(self, client, db_session):
+        """Test getting graph for a session"""
+        from models.session import Session
+        from models.message import Message
+        from models.entity import Entity
+        from models.relationship import Relationship
+        import uuid
+
+        # Create session with messages that have entities
+        session = Session(
+            session_id=f"session_{str(uuid.uuid4())[:8]}",
+            user_id="test-user-graph",
+        )
+        db_session.add(session)
+        await db_session.commit()
+        await db_session.refresh(session)
+
+        # Create user message
+        user_message = Message(
+            session_id=session.id,
+            role="user",
+            content="Who discussed the bill?",
+        )
+        db_session.add(user_message)
+
+        # Create assistant message with entities in structured_response
+        assistant_message = Message(
+            session_id=session.id,
+            role="assistant",
+            content="",
+            structured_response={
+                "intro_message": "Analysis complete",
+                "response_cards": [
+                    {
+                        "summary": "Entities found",
+                        "details": "The following entities were mentioned...",
+                    }
+                ],
+                "follow_up_suggestions": [],
+                "entities": [
+                    {"entity_id": "entity-1", "name": "Senator A", "type": "person"},
+                    {"entity_id": "entity-2", "name": "Bill 123", "type": "bill"},
+                ],
+            },
+        )
+        db_session.add(assistant_message)
+        await db_session.commit()
+
+        # Create entities in database
+        entity1 = Entity(
+            entity_id="entity-1",
+            entity_type="person",
+            name="Senator A",
+            canonical_name="Senator A",
+            description="A senator from Barbados",
+            importance_score=0.9,
+        )
+        entity2 = Entity(
+            entity_id="entity-2",
+            entity_type="bill",
+            name="Bill 123",
+            canonical_name="Bill 123",
+            description="A bill about education",
+            importance_score=0.8,
+        )
+        db_session.add_all([entity1, entity2])
+        await db_session.commit()
+
+        # Create relationship
+        relationship = Relationship(
+            source_id="entity-1",
+            target_id="entity-2",
+            relation_type="supports",
+            sentiment="positive",
+            evidence="The senator strongly supported this bill",
+            video_id=None,
+            timestamp_seconds=0,
+        )
+        db_session.add(relationship)
+        await db_session.commit()
+
+        response = client.get(f"/api/session/{session.session_id}/graph")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "nodes" in data
+        assert "edges" in data
+        assert len(data["nodes"]) == 2
+        assert len(data["edges"]) == 1
+
+        # Check node structure
+        node1 = next((n for n in data["nodes"] if n["id"] == "entity-1"), None)
+        assert node1 is not None
+        assert node1["label"] == "Senator A"
+        assert node1["type"] == "person"
+
+        # Check edge structure
+        edge = data["edges"][0]
+        assert edge["source"] == "entity-1"
+        assert edge["target"] == "entity-2"
+        assert edge["relation"] == "supports"
+
+    @pytest.mark.asyncio
+    async def test_get_session_graph_no_entities(self, client, db_session):
+        """Test getting graph for session with no entities"""
+        from models.session import Session
+        from models.message import Message
+        import uuid
+
+        # Create session with messages but no entities
+        session = Session(
+            session_id=f"session_{str(uuid.uuid4())[:8]}",
+            user_id="test-user-no-entities",
+        )
+        db_session.add(session)
+        await db_session.commit()
+        await db_session.refresh(session)
+
+        # Create user message
+        user_message = Message(
+            session_id=session.id,
+            role="user",
+            content="Hello",
+        )
+        db_session.add(user_message)
+
+        # Create assistant message without entities
+        assistant_message = Message(
+            session_id=session.id,
+            role="assistant",
+            content="Hello!",
+            structured_response={
+                "intro_message": "Hello!",
+                "response_cards": [],
+                "follow_up_suggestions": [],
+            },
+        )
+        db_session.add(assistant_message)
+        await db_session.commit()
+
+        response = client.get(f"/api/session/{session.session_id}/graph")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["nodes"] == []
+        assert data["edges"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_session_graph_not_found(self, client):
+        """Test getting graph for non-existent session"""
+        response = client.get("/api/session/nonexistent-session/graph")
+
+        assert response.status_code == 404
+        assert "Session not found" in response.json()["detail"]
