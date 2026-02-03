@@ -1,10 +1,9 @@
 """Video transcription service tests"""
 
-from unittest.mock import Mock, MagicMock
-import pytest
+from unittest.mock import Mock
 
-from services.video_transcription import VideoTranscriptionService
 from parsers.models import OrderPaper
+from services.video_transcription import VideoTranscriptionService
 
 
 class TestVideoTranscriptionService:

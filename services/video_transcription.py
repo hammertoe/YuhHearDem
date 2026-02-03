@@ -1,8 +1,5 @@
 """Video transcription service using Gemini"""
 
-from pathlib import Path
-from typing import Optional
-
 from parsers.models import OrderPaper
 from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient

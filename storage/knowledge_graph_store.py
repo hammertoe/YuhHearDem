@@ -1,14 +1,12 @@
 """Knowledge graph storage layer"""
 
-from typing import Optional, List, Dict
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.entity import Entity
-from models.relationship import Relationship
-from models.speaker import Speaker
 from models.mention import Mention
+from models.relationship import Relationship
 from models.video import Video
 
 
@@ -19,8 +17,8 @@ class KnowledgeGraphStore:
         self,
         db: AsyncSession,
         name: str,
-        entity_type: Optional[str] = None,
-    ) -> Optional[dict]:
+        entity_type: str | None = None,
+    ) -> dict | None:
         """
         Find entities by name or type.
 
@@ -53,7 +51,7 @@ class KnowledgeGraphStore:
         db: AsyncSession,
         entity_id: str,
         direction: str = "all",
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Get relationships for an entity.
 
@@ -85,9 +83,9 @@ class KnowledgeGraphStore:
         self,
         db: AsyncSession,
         entity_id: str,
-        video_id: Optional[str] = None,
+        video_id: str | None = None,
         limit: int = 10,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Get mentions of an entity with timestamps.
 
@@ -122,7 +120,7 @@ class KnowledgeGraphStore:
         self,
         db: AsyncSession,
         entity_id: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Get full entity details.
 
@@ -144,10 +142,10 @@ class KnowledgeGraphStore:
     async def search_by_date_range(
         self,
         db: AsyncSession,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
-        chamber: Optional[str] = None,
-    ) -> List[Video]:
+        date_from: str | None = None,
+        date_to: str | None = None,
+        chamber: str | None = None,
+    ) -> list[Video]:
         """
         Search for sessions within date range.
 
@@ -185,7 +183,7 @@ class KnowledgeGraphStore:
         self,
         db: AsyncSession,
         speaker_id: str,
-    ) -> List[Video]:
+    ) -> list[Video]:
         """
         Find all videos where this speaker appears.
 
@@ -208,7 +206,7 @@ class KnowledgeGraphStore:
         db: AsyncSession,
         query_text: str,
         limit: int = 10,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Semantic search over transcript sentences.
 

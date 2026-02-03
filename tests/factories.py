@@ -1,14 +1,15 @@
 """Factory for creating test models"""
 
-import factory
 from datetime import datetime
 from uuid import uuid4
 
-from models.video import Video
-from models.speaker import Speaker
+import factory
+
 from models.entity import Entity
-from models.session import Session
 from models.message import Message
+from models.session import Session
+from models.speaker import Speaker
+from models.video import Video
 
 
 class VideoFactory(factory.Factory):
@@ -19,9 +20,7 @@ class VideoFactory(factory.Factory):
 
     id = factory.LazyFunction(uuid4)
     youtube_id = factory.Sequence(lambda n: f"test_video_{n}")
-    youtube_url = factory.LazyAttribute(
-        lambda o: f"https://youtube.com/watch?v={o.youtube_id}"
-    )
+    youtube_url = factory.LazyAttribute(lambda o: f"https://youtube.com/watch?v={o.youtube_id}")
     title = factory.Faker("sentence")
     chamber = factory.Iterator(["senate", "house"])
     session_date = factory.LazyFunction(datetime.utcnow)
@@ -61,9 +60,7 @@ class EntityFactory(factory.Factory):
 
     id = factory.LazyFunction(uuid4)
     entity_id = factory.Sequence(lambda n: f"entity_{n}")
-    entity_type = factory.Iterator(
-        ["person", "organization", "place", "law", "concept"]
-    )
+    entity_type = factory.Iterator(["person", "organization", "place", "law", "concept"])
     name = factory.Faker("company")
     canonical_name = factory.LazyAttribute(lambda o: o.name.title())
     aliases = factory.LazyFunction(list)

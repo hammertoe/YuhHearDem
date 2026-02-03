@@ -1,25 +1,24 @@
 """Video management API endpoints"""
 
-from typing import Optional, List
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.video import Video
 from api.schemas import VideoCreate, VideoResponse
 from app.dependencies import get_db_session
-
+from models.video import Video
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 
 
-@router.get("/", response_model=List[VideoResponse])
+@router.get("/", response_model=list[VideoResponse])
 async def list_videos(
     db: AsyncSession = Depends(get_db_session),
-    chamber: Optional[str] = Query(None, description="Filter by chamber"),
-    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    chamber: str | None = Query(None, description="Filter by chamber"),
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
 ):
@@ -60,12 +59,7 @@ async def list_videos(
     result = await db.execute(query)
     videos = result.scalars().all()
 
-    total = len(videos)
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated_videos = videos[start:end]
-
-    return paginated_videos
+    return videos
 
 
 @router.get("/{video_id}", response_model=VideoResponse)

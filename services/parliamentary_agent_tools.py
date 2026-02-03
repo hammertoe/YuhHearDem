@@ -1,6 +1,5 @@
 """Parliamentary agent tools for function calling"""
 
-from typing import Optional, Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storage.knowledge_graph_store import KnowledgeGraphStore
@@ -21,7 +20,7 @@ class ParliamentaryAgentTools:
         self,
         db: AsyncSession,
         name: str,
-        entity_type: Optional[str] = None,
+        entity_type: str | None = None,
     ) -> dict:
         """
         Tool: Find entities by name or type.
@@ -76,7 +75,7 @@ class ParliamentaryAgentTools:
         self,
         db: AsyncSession,
         entity_id: str,
-        video_id: Optional[str] = None,
+        video_id: str | None = None,
         limit: int = 10,
     ) -> dict:
         """
@@ -138,9 +137,9 @@ class ParliamentaryAgentTools:
     async def search_by_date_range(
         self,
         db: AsyncSession,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
-        chamber: Optional[str] = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        chamber: str | None = None,
     ) -> dict:
         """
         Tool: Search for sessions within date range.
@@ -154,9 +153,7 @@ class ParliamentaryAgentTools:
         Returns:
             Tool response for Gemini
         """
-        videos = await self.kg_store.search_by_date_range(
-            db, date_from, date_to, chamber
-        )
+        videos = await self.kg_store.search_by_date_range(db, date_from, date_to, chamber)
 
         return {
             "status": "success",
@@ -218,7 +215,7 @@ class ParliamentaryAgentTools:
             },
         }
 
-    def get_tools_dict(self) -> Dict[str, callable]:
+    def get_tools_dict(self) -> dict[str, callable]:
         """
         Get all tools as dictionary for Gemini function calling.
 
@@ -227,18 +224,10 @@ class ParliamentaryAgentTools:
         """
         return {
             "find_entity": lambda db, **kwargs: self.find_entity(db, **kwargs),
-            "get_relationships": lambda db, **kwargs: self.get_relationships(
-                db, **kwargs
-            ),
+            "get_relationships": lambda db, **kwargs: self.get_relationships(db, **kwargs),
             "get_mentions": lambda db, **kwargs: self.get_mentions(db, **kwargs),
-            "get_entity_details": lambda db, **kwargs: self.get_entity_details(
-                db, **kwargs
-            ),
-            "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(
-                db, **kwargs
-            ),
-            "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(
-                db, **kwargs
-            ),
+            "get_entity_details": lambda db, **kwargs: self.get_entity_details(db, **kwargs),
+            "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(db, **kwargs),
+            "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(db, **kwargs),
             "search_semantic": lambda db, **kwargs: self.search_semantic(db, **kwargs),
         }

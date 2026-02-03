@@ -2,15 +2,13 @@
 
 import asyncio
 import os
+
 import pytest
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Test database URL (using PostgreSQL with pgvector)
-TEST_DATABASE_URL = (
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
-)
+TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -18,13 +16,12 @@ def set_test_database():
     """Set test database URL before any imports"""
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
     # Clear cached settings to force reload
-    from app.config import get_settings
 
     get_settings.cache_clear()
 
 
-from core.database import Base, reset_engine
 from app.config import get_settings
+from core.database import Base, reset_engine
 
 
 @pytest.fixture(scope="function")
@@ -90,9 +87,7 @@ def override_get_db():
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
-        session_maker = async_sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
+        session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
         async with session_maker() as session:
             try:
@@ -111,9 +106,9 @@ def override_get_db():
 @pytest.fixture(scope="function")
 async def client(override_get_db):
     """Create async test client"""
-    from httpx import AsyncClient
-    from httpx import ASGITransport
     from asgi_lifespan import LifespanManager
+    from httpx import ASGITransport, AsyncClient
+
     from app.main import app
     from core.database import get_db
 
@@ -121,9 +116,7 @@ async def client(override_get_db):
 
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as test_client:
+        async with AsyncClient(transport=transport, base_url="http://test") as test_client:
             yield test_client
 
     app.dependency_overrides.clear()
@@ -138,7 +131,6 @@ def anyio_backend():
 @pytest.fixture(scope="session", autouse=True)
 def verify_postgres():
     """Verify PostgreSQL is running before tests"""
-    import asyncio
     import asyncpg
 
     async def _check():
@@ -161,7 +153,8 @@ def verify_postgres():
 @pytest.fixture
 def mock_db():
     """Mock database session for testing"""
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     mock = AsyncMock(spec=AsyncSession)

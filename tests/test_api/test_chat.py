@@ -1,8 +1,8 @@
 """Test chat API endpoints"""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
-from sqlalchemy.ext.asyncio import AsyncSession
+
+import pytest
 
 
 class TestChatAPI:
@@ -21,8 +21,8 @@ class TestChatAPI:
             }
         )
 
-        from app.main import app
         from api.routes.chat import get_parliamentary_agent
+        from app.main import app
 
         app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
 
@@ -57,8 +57,8 @@ class TestChatAPI:
             }
         )
 
-        from app.main import app
         from api.routes.chat import get_parliamentary_agent
+        from app.main import app
 
         app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
 
@@ -128,8 +128,8 @@ class TestChatAPI:
             }
         )
 
-        from app.main import app
         from api.routes.chat import get_parliamentary_agent
+        from app.main import app
 
         app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
 
@@ -162,8 +162,8 @@ class TestChatAPI:
             }
         )
 
-        from app.main import app
         from api.routes.chat import get_parliamentary_agent
+        from app.main import app
 
         app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
 
@@ -198,11 +198,12 @@ class TestChatAPI:
             }
         )
 
-        from app.main import app
-        from api.routes.chat import get_parliamentary_agent
-        from models.session import Session
-        from models.message import Message
         from sqlalchemy import select
+
+        from api.routes.chat import get_parliamentary_agent
+        from app.main import app
+        from models.message import Message
+        from models.session import Session
 
         app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
 
@@ -240,8 +241,9 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_get_session(self, client, db_session):
         """Test getting session details"""
-        from models.session import Session
         import uuid
+
+        from models.session import Session
 
         session = Session(
             session_id=f"session_{str(uuid.uuid4())[:8]}",
@@ -272,9 +274,10 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_get_session_messages(self, client, db_session):
         """Test getting messages for a session"""
-        from models.session import Session
-        from models.message import Message
         import uuid
+
+        from models.message import Message
+        from models.session import Session
 
         session = Session(
             session_id=f"session_{str(uuid.uuid4())[:8]}",
@@ -321,9 +324,11 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_archive_session(self, client, db_session, db_session_maker):
         """Test archiving a session"""
-        from models.session import Session
         import uuid
+
         from sqlalchemy import select
+
+        from models.session import Session
 
         session = Session(
             session_id=f"session_{str(uuid.uuid4())[:8]}",
@@ -353,8 +358,9 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_archive_session_already_archived(self, client, db_session):
         """Test archiving an already archived session"""
-        from models.session import Session
         import uuid
+
+        from models.session import Session
 
         session = Session(
             session_id=f"session_{str(uuid.uuid4())[:8]}",
@@ -381,11 +387,12 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_get_session_graph(self, client, db_session):
         """Test getting graph for a session"""
-        from models.session import Session
-        from models.message import Message
-        from models.entity import Entity
-        from models.relationship import Relationship
         import uuid
+
+        from models.entity import Entity
+        from models.message import Message
+        from models.relationship import Relationship
+        from models.session import Session
 
         # Create session with messages that have entities
         session = Session(
@@ -485,9 +492,10 @@ class TestChatAPI:
     @pytest.mark.anyio
     async def test_get_session_graph_no_entities(self, client, db_session):
         """Test getting graph for session with no entities"""
-        from models.session import Session
-        from models.message import Message
         import uuid
+
+        from models.message import Message
+        from models.session import Session
 
         # Create session with messages but no entities
         session = Session(

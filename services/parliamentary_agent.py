@@ -1,8 +1,7 @@
 """Parliamentary agent - Complete implementation with multi-hop reasoning"""
 
-from typing import Optional, List, Dict
-from sqlalchemy.ext.asyncio import AsyncSession
 from google.genai import types
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.gemini import GeminiClient
 from services.parliamentary_agent_tools import ParliamentaryAgentTools
@@ -48,9 +47,7 @@ class ParliamentaryAgent:
         while iteration < max_iterations:
             iteration += 1
 
-            prompt = self._build_agent_prompt(
-                user_query, context, iteration, max_iterations
-            )
+            prompt = self._build_agent_prompt(user_query, context, iteration, max_iterations)
             tools_dict = self.tools.get_tools_dict()
 
             response = await self.client.client.models.generate_content(
@@ -104,23 +101,23 @@ class ParliamentaryAgent:
         }
 
     def _build_agent_prompt(
-        self, user_query: str, context: List[str], iteration: int, max_iterations: int
+        self, user_query: str, context: list[str], iteration: int, max_iterations: int
     ) -> str:
         """Build prompt for agent iteration."""
         context_info = ""
         tools_info = ""
         if iteration > 1:
-            context_info = f"\n\nPrevious research:"
+            context_info = "\n\nPrevious research:"
 
             tools_info = "\nAvailable tools:\n" + "\n".join(
                 [
-                    f"  - find_entity(name, type): Search entities by name or type",
-                    f"  - get_relationships(entity_id, direction): Get entity connections",
-                    f"  - get_mentions(entity_id, video_id, limit): Get citations with timestamps",
-                    f"  - get_entity_details(entity_id): Full entity metadata",
-                    f"  - search_by_date_range(date_from, date_to, chamber): Find sessions",
-                    f"  - search_by_speaker(speaker_id): Find all speeches",
-                    f"  - search_semantic(query_text, limit): Semantic search",
+                    "  - find_entity(name, type): Search entities by name or type",
+                    "  - get_relationships(entity_id, direction): Get entity connections",
+                    "  - get_mentions(entity_id, video_id, limit): Get citations with timestamps",
+                    "  - get_entity_details(entity_id): Full entity metadata",
+                    "  - search_by_date_range(date_from, date_to, chamber): Find sessions",
+                    "  - search_by_speaker(speaker_id): Find all speeches",
+                    "  - search_semantic(query_text, limit): Semantic search",
                 ]
             )
 
@@ -151,7 +148,7 @@ Think step by step:
 
 Begin your analysis."""
 
-    def _parse_agent_response(self, response_text: str, user_query: str) -> Dict:
+    def _parse_agent_response(self, response_text: str, user_query: str) -> dict:
         """Parse Gemini response into structured format."""
         if "function_calls" in response_text:
             return self._parse_function_calls(response_text, user_query)
@@ -164,7 +161,7 @@ Begin your analysis."""
                 "iteration": 0,
             }
 
-    def _parse_function_calls(self, response_text: str, user_query: str) -> Dict:
+    def _parse_function_calls(self, response_text: str, user_query: str) -> dict:
         """Parse function call blocks from response."""
         import json
 
@@ -172,7 +169,7 @@ Begin your analysis."""
         lines = response_text.split("\n")
 
         current_tool = None
-        current_data_lines: List[str] = []
+        current_data_lines: list[str] = []
 
         for line in lines:
             if line.startswith("Tool: "):
@@ -217,7 +214,7 @@ Begin your analysis."""
             "tool_results": tool_results,
         }
 
-    def _extract_context_from_response(self, result: Dict) -> List[str]:
+    def _extract_context_from_response(self, result: dict) -> list[str]:
         """Extract context for next iteration."""
         context = []
 
@@ -228,9 +225,7 @@ Begin your analysis."""
                 entity = tool_result["data"].get("entities", [{}])
                 context.append(f"Found entity: {entity.get('name', 'Unknown')}")
                 if entity:
-                    context.append(
-                        f"  Entity type: {entity.get('entity_type', 'Unknown')}"
-                    )
+                    context.append(f"  Entity type: {entity.get('entity_type', 'Unknown')}")
 
             elif tool == "get_relationships" and tool_result["data"]:
                 relationships = tool_result["data"].get("relationships", [])
@@ -242,7 +237,7 @@ Begin your analysis."""
 
         return context
 
-    def _extract_entities_from_result(self, result: Dict) -> List[Dict]:
+    def _extract_entities_from_result(self, result: dict) -> list[dict]:
         """Extract entities from tool results."""
         entities = []
 
@@ -264,9 +259,7 @@ Begin your analysis."""
 
         return entities
 
-    def _generate_answer_from_results(
-        self, tool_results: List[Dict], user_query: str
-    ) -> str:
+    def _generate_answer_from_results(self, tool_results: list[dict], user_query: str) -> str:
         """Generate final answer from tool results."""
         if not tool_results:
             return "I couldn't find relevant information to answer your question. The knowledge graph may need more data. Please try rephrasing or check that videos have been processed."
@@ -320,9 +313,7 @@ Begin your analysis."""
         if mentions_with_timestamps:
             answer_parts.append("\n**Citations:**")
             for m in mentions_with_timestamps[:5]:
-                answer_parts.append(
-                    f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)"
-                )
+                answer_parts.append(f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)")
 
         answer_parts.append(
             "\n\nNote: For more detailed information about any entity, use the get_entity_details tool."
@@ -330,7 +321,7 @@ Begin your analysis."""
 
         return "\n\n".join(answer_parts)
 
-    def format_answer_with_citations(self, answer: str, citations: List[dict]) -> str:
+    def format_answer_with_citations(self, answer: str, citations: list[dict]) -> str:
         """Format answer with citations."""
         if not citations:
             return answer
@@ -362,9 +353,7 @@ Begin your analysis."""
                 source_entity_id = citation.get("source_id", "Unknown")
                 target_entity_id = citation.get("target_id", "Unknown")
                 relation = citation.get("relation_type", "Unknown")
-                add_section(
-                    f"Relationship: {source_entity_id} → {target_entity_id} ({relation})"
-                )
+                add_section(f"Relationship: {source_entity_id} → {target_entity_id} ({relation})")
 
             if citation.get("evidence"):
                 add_section(f'"{citation.get("evidence", "")}"')

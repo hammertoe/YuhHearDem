@@ -1,8 +1,8 @@
 """API Pydantic schemas for request/response validation"""
 
 from datetime import datetime
-from typing import Optional, List
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -22,8 +22,8 @@ class VideoBase(BaseModel):
     title: str
     chamber: str
     session_date: datetime
-    sitting_number: Optional[str] = None
-    duration_seconds: Optional[int] = None
+    sitting_number: str | None = None
+    duration_seconds: int | None = None
 
 
 class VideoCreate(VideoBase):
@@ -36,7 +36,7 @@ class VideoResponse(VideoBase):
     """Video response schema"""
 
     id: UUID
-    transcript_processed_at: Optional[datetime] = None
+    transcript_processed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -46,18 +46,18 @@ class SpeakerBase(BaseModel):
 
     canonical_id: str
     name: str
-    title: Optional[str] = None
-    role: Optional[str] = None
-    chamber: Optional[str] = None
+    title: str | None = None
+    role: str | None = None
+    chamber: str | None = None
 
 
 class SpeakerResponse(SpeakerBase):
     """Speaker response schema"""
 
     id: UUID
-    aliases: List[str] = []
-    pronoun: Optional[str] = None
-    gender: Optional[str] = None
+    aliases: list[str] = []
+    pronoun: str | None = None
+    gender: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -75,8 +75,8 @@ class EntityResponse(EntityBase):
     """Entity response schema"""
 
     id: UUID
-    aliases: List[str] = []
-    description: Optional[str] = None
+    aliases: list[str] = []
+    description: str | None = None
     importance_score: float = 0.0
     created_at: datetime
     updated_at: datetime
@@ -106,7 +106,7 @@ class MessageCreate(BaseModel):
     session_id: UUID
     role: str
     content: str
-    structured_response: Optional[dict] = None
+    structured_response: dict | None = None
 
 
 class MessageResponse(BaseModel):
@@ -116,7 +116,7 @@ class MessageResponse(BaseModel):
     session_id: UUID
     role: str
     content: str
-    structured_response: Optional[dict] = None
+    structured_response: dict | None = None
     created_at: datetime
 
 
@@ -125,7 +125,7 @@ class QueryRequest(BaseModel):
 
     query: str
     user_id: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 class ResponseCard(BaseModel):
@@ -139,9 +139,9 @@ class StructuredResponse(BaseModel):
     """Structured response for chat"""
 
     intro_message: str
-    response_cards: List[ResponseCard]
-    follow_up_suggestions: List[str]
-    entities: Optional[List[dict]] = None
+    response_cards: list[ResponseCard]
+    follow_up_suggestions: list[str]
+    entities: list[dict] | None = None
 
 
 class QueryResponse(BaseModel):
@@ -151,7 +151,7 @@ class QueryResponse(BaseModel):
     user_id: str
     message_id: str
     status: str
-    message: Optional[str] = None
+    message: str | None = None
     structured_response: StructuredResponse
 
 

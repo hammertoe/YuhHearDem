@@ -1,8 +1,7 @@
 """Video transcript data models"""
 
-from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, List
+from datetime import datetime
 
 
 @dataclass
@@ -18,8 +17,8 @@ class SpeechBlock:
     """Block of consecutive sentences from same speaker"""
 
     speaker_name: str
-    speaker_id: Optional[str] = None
-    sentences: List[Sentence] = None
+    speaker_id: str | None = None
+    sentences: list[Sentence] = None
 
 
 @dataclass
@@ -27,9 +26,9 @@ class TranscriptAgendaItem:
     """Agenda item within transcript"""
 
     topic_title: str
-    speech_blocks: List[SpeechBlock] = None
-    bill_id: Optional[str] = None
-    bill_match_confidence: Optional[float] = None
+    speech_blocks: list[SpeechBlock] = None
+    bill_id: str | None = None
+    bill_match_confidence: float | None = None
 
 
 @dataclass
@@ -39,7 +38,7 @@ class SessionTranscript:
     session_title: str
     date: datetime
     chamber: str  # 'senate' | 'house'
-    agenda_items: List[TranscriptAgendaItem]
-    video_url: Optional[str] = None
-    video_title: Optional[str] = None
-    video_upload_date: Optional[str] = None
+    agenda_items: list[TranscriptAgendaItem]
+    video_url: str | None = None
+    video_title: str | None = None
+    video_upload_date: str | None = None

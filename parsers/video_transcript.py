@@ -7,14 +7,12 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-from thefuzz import fuzz
 
 from src.models.order_paper import OrderPaper
-from src.models.session import SessionTranscript, TranscriptAgendaItem, SpeechBlock, Sentence
+from src.models.session import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
 from src.models.speaker import Speaker
 from src.services.gemini import GeminiClient
+from thefuzz import fuzz
 
 
 class VideoTranscriptionParser:
@@ -30,7 +28,12 @@ class VideoTranscriptionParser:
     MAX_RETRIES = 3
     RETRY_DELAY_BASE = 5  # seconds
 
-    def __init__(self, gemini_client: GeminiClient, chunk_size: int = DEFAULT_CHUNK_SIZE, fuzzy_threshold: int = 85):
+    def __init__(
+        self,
+        gemini_client: GeminiClient,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        fuzzy_threshold: int = 85,
+    ):
         """
         Initialize parser with Gemini client.
 
@@ -49,12 +52,12 @@ class VideoTranscriptionParser:
         order_paper: OrderPaper,
         speaker_id_mapping: dict[str, str],
         fps: float = 0.25,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
         auto_chunk: bool = True,
-        video_duration: Optional[int] = None,
+        video_duration: int | None = None,
         cleanup_chunks: bool = True,
-        video_metadata: Optional[dict] = None,
+        video_metadata: dict | None = None,
     ) -> tuple[SessionTranscript, list[Speaker]]:
         """
         Transcribe a parliamentary session video.
@@ -94,7 +97,7 @@ class VideoTranscriptionParser:
             needs_chunking = estimated_tokens > self.SAFE_TOKEN_LIMIT
 
         if needs_chunking:
-            print(f"   Video exceeds token limit - processing in chunks...")
+            print("   Video exceeds token limit - processing in chunks...")
             return self._transcribe_chunked(
                 video_url=video_url,
                 order_paper=order_paper,
@@ -120,9 +123,9 @@ class VideoTranscriptionParser:
             transcript = self._parse_response(response, speaker_id_mapping, new_speakers)
             # Add video metadata
             if video_metadata:
-                transcript.video_url = video_metadata.get('url')
-                transcript.video_title = video_metadata.get('title')
-                transcript.video_upload_date = video_metadata.get('upload_date')
+                transcript.video_url = video_metadata.get("url")
+                transcript.video_title = video_metadata.get("title")
+                transcript.video_upload_date = video_metadata.get("upload_date")
             return (transcript, new_speakers)
 
     def _build_transcription_prompt(
@@ -144,7 +147,9 @@ class VideoTranscriptionParser:
         speaker_list = []
         for speaker in order_paper.speakers:
             canonical_id = speaker_id_mapping.get(speaker.name, speaker.name)
-            speaker_info = f"  ---\n  ID: {canonical_id}\n  Name: {speaker.title or ''} {speaker.name}"
+            speaker_info = (
+                f"  ---\n  ID: {canonical_id}\n  Name: {speaker.title or ''} {speaker.name}"
+            )
             if speaker.role:
                 speaker_info += f"\n  Role: {speaker.role}"
             speaker_list.append(speaker_info)
@@ -161,7 +166,7 @@ class VideoTranscriptionParser:
 SESSION CONTEXT:
 - Title: {order_paper.session_title}
 - Date: {order_paper.session_date}
-- Sitting: {order_paper.sitting_number or 'N/A'}
+- Sitting: {order_paper.sitting_number or "N/A"}
 
 SPEAKERS (for reference - to help you identify who is speaking):
 {chr(10).join(speaker_list)}
@@ -229,12 +234,31 @@ Return the complete transcript in the specified JSON structure."""
         """
         titles = [
             # Compound titles (must be processed before their components)
-            "the honourable", "the hon.", "his honour", "her honour",
-            "his excellency", "her excellency",
+            "the honourable",
+            "the hon.",
+            "his honour",
+            "her honour",
+            "his excellency",
+            "her excellency",
             # Single titles
-            "honourable", "hon.", "mr.", "mrs.", "ms.", "dr.", "k.c.", "m.p.",
-            "senator", "s.c.", "q.c.", "minister", "rev.", "prof.",
-            "sir", "dame", "lord", "lady"
+            "honourable",
+            "hon.",
+            "mr.",
+            "mrs.",
+            "ms.",
+            "dr.",
+            "k.c.",
+            "m.p.",
+            "senator",
+            "s.c.",
+            "q.c.",
+            "minister",
+            "rev.",
+            "prof.",
+            "sir",
+            "dame",
+            "lord",
+            "lady",
         ]
         normalized = name.lower()
         # Sort by length descending to ensure longer titles are removed first
@@ -259,18 +283,16 @@ Return the complete transcript in the specified JSON structure."""
         # Replace spaces with hyphens
         slug = normalized.replace(" ", "-")
         # Remove any remaining special characters except hyphens
-        slug = re.sub(r'[^a-z0-9-]', '', slug)
+        slug = re.sub(r"[^a-z0-9-]", "", slug)
         # Remove consecutive hyphens
-        slug = re.sub(r'-+', '-', slug).strip('-')
+        slug = re.sub(r"-+", "-", slug).strip("-")
         # Add short unique suffix (8 chars from UUID)
         unique_suffix = str(uuid.uuid4())[:8]
         return f"{slug}-{unique_suffix}"
 
     def _map_or_create_speaker_id(
-        self,
-        speaker_name: str,
-        speaker_id_mapping: dict[str, str]
-    ) -> tuple[Optional[str], bool, Optional[Speaker]]:
+        self, speaker_name: str, speaker_id_mapping: dict[str, str]
+    ) -> tuple[str | None, bool, Speaker | None]:
         """
         Map a speaker name to canonical ID using fuzzy matching, or create a new ID.
 
@@ -325,7 +347,7 @@ Return the complete transcript in the specified JSON structure."""
             print(f"      ⚠️  Ambiguous match for '{speaker_name}':")
             print(f"         - {close_matches[0][2]} (score: {close_matches[0][0]})")
             print(f"         - {close_matches[1][2]} (score: {close_matches[1][0]})")
-            print(f"         Creating new ID to avoid misattribution.")
+            print("         Creating new ID to avoid misattribution.")
             # Fall through to create new ID
         elif close_matches:
             # Clear match found
@@ -351,8 +373,8 @@ Return the complete transcript in the specified JSON structure."""
     def _parse_response(
         self,
         response: dict,
-        speaker_id_mapping: Optional[dict[str, str]] = None,
-        new_speakers_list: Optional[list[Speaker]] = None
+        speaker_id_mapping: dict[str, str] | None = None,
+        new_speakers_list: list[Speaker] | None = None,
     ) -> SessionTranscript:
         """
         Parse Gemini response into SessionTranscript object.
@@ -383,7 +405,9 @@ Return the complete transcript in the specified JSON structure."""
                     )
 
                 # Handle both old format (speaker) and new format (speaker_name/speaker_id)
-                speaker_name = block_data.get("speaker_name") or block_data.get("speaker", "UNKNOWN")
+                speaker_name = block_data.get("speaker_name") or block_data.get(
+                    "speaker", "UNKNOWN"
+                )
                 speaker_id = block_data.get("speaker_id")
 
                 # Map speaker name to ID if mapping provided (even if empty) and ID not already set
@@ -441,7 +465,7 @@ Return the complete transcript in the specified JSON structure."""
             Video identifier for chunk file naming
         """
         # Try to extract YouTube video ID
-        match = re.search(r'[?&]v=([^&]+)', video_url)
+        match = re.search(r"[?&]v=([^&]+)", video_url)
         if match:
             return match.group(1)
 
@@ -478,7 +502,7 @@ Return the complete transcript in the specified JSON structure."""
             json.dump(transcript.to_dict(), f, indent=2)
         print(f"      ✓ Saved chunk {chunk_num} to {chunk_file}")
 
-    def _load_chunk(self, video_url: str, chunk_num: int) -> Optional[SessionTranscript]:
+    def _load_chunk(self, video_url: str, chunk_num: int) -> SessionTranscript | None:
         """
         Load a chunk transcript from disk if it exists.
 
@@ -558,7 +582,7 @@ Return the complete transcript in the specified JSON structure."""
         prompt: str,
         schema: dict,
         cleanup_chunks: bool = True,
-        video_metadata: Optional[dict] = None,
+        video_metadata: dict | None = None,
     ) -> tuple[SessionTranscript, list[Speaker]]:
         """
         Transcribe video in chunks and merge results.
@@ -582,10 +606,13 @@ Return the complete transcript in the specified JSON structure."""
         print(f"   Processing {len(chunks)} chunks of {self.chunk_size}s each...")
 
         # Check for existing chunks
-        existing_chunks = sum(1 for i in range(1, len(chunks) + 1)
-                             if self._get_chunk_file_path(video_url, i).exists())
+        existing_chunks = sum(
+            1 for i in range(1, len(chunks) + 1) if self._get_chunk_file_path(video_url, i).exists()
+        )
         if existing_chunks > 0:
-            print(f"   Found {existing_chunks} existing chunk(s) - resuming from where we left off...")
+            print(
+                f"   Found {existing_chunks} existing chunk(s) - resuming from where we left off..."
+            )
 
         chunk_transcripts = []
         new_speakers = []  # Track newly created speakers across all chunks
@@ -619,7 +646,9 @@ Return the complete transcript in the specified JSON structure."""
 
                     # Adjust timestamps to account for chunk offset and validate
                     if chunk_start > 0:
-                        transcript = self._adjust_timestamps(transcript, chunk_start, chunk_start, chunk_end)
+                        transcript = self._adjust_timestamps(
+                            transcript, chunk_start, chunk_start, chunk_end
+                        )
 
                     # Save chunk to disk
                     self._save_chunk(transcript, video_url, i)
@@ -629,11 +658,13 @@ Return the complete transcript in the specified JSON structure."""
                     if attempt < self.MAX_RETRIES:
                         delay = self.RETRY_DELAY_BASE * (2 ** (attempt - 1))  # Exponential backoff
                         print(f"      ⚠️  Error: {e}")
-                        print(f"      Retrying in {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES})...")
+                        print(
+                            f"      Retrying in {delay}s (attempt {attempt + 1}/{self.MAX_RETRIES})..."
+                        )
                         time.sleep(delay)
                     else:
                         print(f"      ❌ Failed after {self.MAX_RETRIES} attempts")
-                        raise
+                        raise e
 
             chunk_transcripts.append(transcript)
 
@@ -642,9 +673,9 @@ Return the complete transcript in the specified JSON structure."""
 
         # Add video metadata
         if video_metadata:
-            merged_transcript.video_url = video_metadata.get('url')
-            merged_transcript.video_title = video_metadata.get('title')
-            merged_transcript.video_upload_date = video_metadata.get('upload_date')
+            merged_transcript.video_url = video_metadata.get("url")
+            merged_transcript.video_title = video_metadata.get("title")
+            merged_transcript.video_upload_date = video_metadata.get("upload_date")
 
         # Cleanup chunk files if requested
         if cleanup_chunks:
@@ -662,16 +693,14 @@ Return the complete transcript in the specified JSON structure."""
         Returns:
             Total seconds (rounded)
         """
-        match = re.match(r'(\d+)m(\d+)s(\d+)ms', time_str)
+        match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
         if not match:
             return 0
         minutes, seconds, ms = map(int, match.groups())
         return minutes * 60 + seconds
 
     def _detect_timestamp_mode(
-        self,
-        transcript: SessionTranscript,
-        chunk_start_seconds: int
+        self, transcript: SessionTranscript, chunk_start_seconds: int
     ) -> str:
         """
         Detect if Gemini returned absolute or relative timestamps.
@@ -708,7 +737,7 @@ Return the complete transcript in the specified JSON structure."""
         transcript: SessionTranscript,
         expected_start: int,
         expected_end: int,
-        tolerance: int = 600  # 10 minutes tolerance
+        tolerance: int = 600,  # 10 minutes tolerance
     ) -> SessionTranscript:
         """
         Validate timestamps are within expected range and filter outliers.
@@ -735,7 +764,11 @@ Return the complete transcript in the specified JSON structure."""
                     timestamp_seconds = self._parse_timecode(sentence.start_time)
 
                     # Check if timestamp is within expected range (with tolerance)
-                    if (expected_start - tolerance) <= timestamp_seconds <= (expected_end + tolerance):
+                    if (
+                        (expected_start - tolerance)
+                        <= timestamp_seconds
+                        <= (expected_end + tolerance)
+                    ):
                         filtered_sentences.append(sentence)
                     else:
                         filtered_count += 1
@@ -760,7 +793,9 @@ Return the complete transcript in the specified JSON structure."""
                 )
 
         if filtered_count > 0:
-            print(f"      ⚠️  Filtered {filtered_count} sentence(s) with timestamps outside expected range")
+            print(
+                f"      ⚠️  Filtered {filtered_count} sentence(s) with timestamps outside expected range"
+            )
 
         return SessionTranscript(
             session_title=transcript.session_title,
@@ -768,7 +803,9 @@ Return the complete transcript in the specified JSON structure."""
             agenda_items=filtered_items,
         )
 
-    def _adjust_timestamps(self, transcript: SessionTranscript, offset_seconds: int, chunk_start: int, chunk_end: int) -> SessionTranscript:
+    def _adjust_timestamps(
+        self, transcript: SessionTranscript, offset_seconds: int, chunk_start: int, chunk_end: int
+    ) -> SessionTranscript:
         """
         Adjust all timestamps in transcript by adding offset if needed.
 
@@ -790,7 +827,7 @@ Return the complete transcript in the specified JSON structure."""
         # Parse time format: "0m5s250ms" -> total milliseconds
         def parse_time(time_str: str) -> int:
             """Parse time string to milliseconds."""
-            match = re.match(r'(\d+)m(\d+)s(\d+)ms', time_str)
+            match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
             if not match:
                 return 0
             minutes, seconds, ms = map(int, match.groups())
@@ -845,7 +882,7 @@ Return the complete transcript in the specified JSON structure."""
                 agenda_items=adjusted_items,
             )
         else:
-            print(f"      Timestamps are already absolute - no adjustment needed")
+            print("      Timestamps are already absolute - no adjustment needed")
 
         # Filter out-of-range timestamps
         transcript = self._validate_and_filter_timestamps(transcript, chunk_start, chunk_end)
@@ -884,7 +921,9 @@ Return the complete transcript in the specified JSON structure."""
 
                 if matching_item:
                     # Merge speech blocks, handling speaker continuity
-                    last_block = matching_item.speech_blocks[-1] if matching_item.speech_blocks else None
+                    last_block = (
+                        matching_item.speech_blocks[-1] if matching_item.speech_blocks else None
+                    )
                     first_new_block = new_item.speech_blocks[0] if new_item.speech_blocks else None
 
                     # Check if same speaker across chunk boundary
@@ -892,9 +931,9 @@ Return the complete transcript in the specified JSON structure."""
                     same_speaker = False
                     if last_block and first_new_block:
                         if last_block.speaker_id and first_new_block.speaker_id:
-                            same_speaker = (last_block.speaker_id == first_new_block.speaker_id)
+                            same_speaker = last_block.speaker_id == first_new_block.speaker_id
                         else:
-                            same_speaker = (last_block.speaker_name == first_new_block.speaker_name)
+                            same_speaker = last_block.speaker_name == first_new_block.speaker_name
 
                     if same_speaker:
                         # Same speaker across chunk boundary - merge blocks

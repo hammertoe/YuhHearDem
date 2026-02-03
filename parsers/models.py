@@ -1,8 +1,7 @@
 """Order paper data models"""
 
-from datetime import date
 from dataclasses import dataclass
-from typing import Optional, List
+from datetime import date
 
 
 @dataclass
@@ -10,8 +9,8 @@ class OrderPaperSpeaker:
     """Speaker from order paper"""
 
     name: str
-    title: Optional[str] = None
-    role: Optional[str] = None
+    title: str | None = None
+    role: str | None = None
 
 
 @dataclass
@@ -19,8 +18,8 @@ class AgendaItem:
     """Agenda item from order paper"""
 
     topic_title: str
-    primary_speaker: Optional[str] = None
-    description: Optional[str] = None
+    primary_speaker: str | None = None
+    description: str | None = None
 
 
 @dataclass
@@ -29,6 +28,6 @@ class OrderPaper:
 
     session_title: str
     session_date: date
-    sitting_number: Optional[str] = None
-    speakers: List[OrderPaperSpeaker] = None
-    agenda_items: List[AgendaItem] = None
+    sitting_number: str | None = None
+    speakers: list[OrderPaperSpeaker] = None
+    agenda_items: list[AgendaItem] = None

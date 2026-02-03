@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from src.models.order_paper import OrderPaper, OrderPaperSpeaker, AgendaItem
+from src.models.order_paper import AgendaItem, OrderPaper, OrderPaperSpeaker
 from src.services.gemini import GeminiClient
 
 
@@ -145,9 +145,7 @@ Return the information in the specified JSON structure."""
             OrderPaper object
         """
         # Parse session date
-        session_date = datetime.strptime(
-            response["session_date"], "%Y-%m-%d"
-        ).date()
+        session_date = datetime.strptime(response["session_date"], "%Y-%m-%d").date()
 
         # Parse speakers
         speakers = [

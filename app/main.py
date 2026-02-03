@@ -2,14 +2,15 @@
 
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from api.routes import chat, search, videos
 from app.config import get_settings
-from core.logging_config import setup_logging
 from app.middleware import TimingMiddleware
-from api.routes import videos, search, chat
+from core.logging_config import setup_logging
 
 settings = get_settings()
 
@@ -69,8 +70,9 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health():
     """Health check endpoint"""
-    from core.database import get_engine
     from sqlalchemy import text
+
+    from core.database import get_engine
 
     db_connected = False
     try:

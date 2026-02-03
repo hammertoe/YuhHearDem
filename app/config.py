@@ -1,9 +1,9 @@
 """Configuration management using pydantic-settings"""
 
-from typing import List
 from functools import lru_cache
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -46,15 +46,13 @@ class Settings(BaseSettings):
     fuzzy_match_threshold: int = Field(default=85)
 
     # CORS
-    cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"]
-    )
+    cors_origins: list[str] = Field(default=["http://localhost:3000", "http://localhost:8000"])
 
     # Cache
     cache_ttl_seconds: int = Field(default=3600)
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

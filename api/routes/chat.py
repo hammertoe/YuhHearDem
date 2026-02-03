@@ -1,20 +1,19 @@
 """Chat and query API endpoints"""
 
 from datetime import datetime
-from typing import Set
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.session import Session
-from models.message import Message
-from models.entity import Entity
-from models.relationship import Relationship
-from api.schemas import StructuredResponse, ResponseCard, QueryResponse
+from api.schemas import QueryResponse, ResponseCard, StructuredResponse
 from app.dependencies import get_db_session, get_parliamentary_agent
+from models.entity import Entity
+from models.message import Message
+from models.relationship import Relationship
+from models.session import Session
 from services.parliamentary_agent import ParliamentaryAgent
-
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 
@@ -49,9 +48,7 @@ async def process_query(
     session = None
 
     if session_id:
-        result = await db.execute(
-            select(Session).where(Session.session_id == session_id)
-        )
+        result = await db.execute(select(Session).where(Session.session_id == session_id))
         session = result.scalar_one_or_none()
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -163,9 +160,7 @@ async def process_query_stream(
     session = None
 
     if session_id:
-        result = await db.execute(
-            select(Session).where(Session.session_id == session_id)
-        )
+        result = await db.execute(select(Session).where(Session.session_id == session_id))
         session = result.scalar_one_or_none()
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -194,7 +189,7 @@ async def process_query_stream(
     async def event_generator():
         import json
 
-        yield f"event: thinking\n"
+        yield "event: thinking\n"
         yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
 
         agent_response = await agent.query(db=db, user_query=query)
@@ -253,7 +248,7 @@ async def process_query_stream(
                 "structured_response": assistant_response.model_dump(),
             }
         )
-        yield f"event: response\n"
+        yield "event: response\n"
         yield f"data: {response_json}\n\n"
 
     return StreamingResponse(
@@ -294,9 +289,7 @@ async def get_session(
         "session_id": session.session_id,
         "user_id": session.user_id,
         "created_at": session.created_at.isoformat() if session.created_at else None,
-        "last_updated": session.last_updated.isoformat()
-        if session.last_updated
-        else None,
+        "last_updated": session.last_updated.isoformat() if session.last_updated else None,
         "archived": session.archived,
         "message_count": len(messages),
     }
@@ -324,9 +317,7 @@ async def get_session_messages(
         raise HTTPException(status_code=404, detail="Session not found")
 
     result = await db.execute(
-        select(Message)
-        .where(Message.session_id == session.id)
-        .order_by(Message.created_at.desc())
+        select(Message).where(Message.session_id == session.id).order_by(Message.created_at.desc())
     )
     messages = result.scalars().all()
 
@@ -392,7 +383,6 @@ async def get_session_graph(
     Returns:
         Nodes and edges for graph visualization
     """
-    from sqlalchemy import func
 
     result = await db.execute(select(Session).where(Session.session_id == session_id))
     session = result.scalar_one_or_none()
@@ -405,7 +395,7 @@ async def get_session_graph(
     messages = result.scalars().all()
 
     # Extract entity IDs from message structured responses
-    entity_ids: Set[str] = set()
+    entity_ids: set[str] = set()
     for message in messages:
         if message.structured_response:
             response = message.structured_response
@@ -418,9 +408,7 @@ async def get_session_graph(
     # Get entity details
     nodes = []
     if entity_ids:
-        result = await db.execute(
-            select(Entity).where(Entity.entity_id.in_(entity_ids))
-        )
+        result = await db.execute(select(Entity).where(Entity.entity_id.in_(entity_ids)))
         entities = result.scalars().all()
 
         nodes = [

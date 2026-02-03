@@ -1,7 +1,6 @@
 """Embeddings service tests"""
 
 from unittest.mock import Mock, patch
-import pytest
 
 from services.embeddings import EmbeddingService
 

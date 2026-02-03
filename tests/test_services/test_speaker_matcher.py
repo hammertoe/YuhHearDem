@@ -1,6 +1,5 @@
 """Video transcription tests"""
 
-import pytest
 from services.speaker_matcher import SpeakerMatcher
 
 
@@ -25,9 +24,7 @@ class TestSpeakerMatcher:
             {"canonical_id": "speaker-2", "name": "Dr. Jane Doe"},
         ]
 
-        speaker_id, match_type = matcher.match_speaker(
-            "Hon. John Smith", known_speakers
-        )
+        speaker_id, match_type = matcher.match_speaker("Hon. John Smith", known_speakers)
         assert speaker_id == "speaker-1"
         assert match_type == "exact"
 
@@ -39,9 +36,7 @@ class TestSpeakerMatcher:
             {"canonical_id": "speaker-1", "name": "Hon. John Smith"},
         ]
 
-        speaker_id, match_type = matcher.match_speaker(
-            "hon. john smith", known_speakers
-        )
+        speaker_id, match_type = matcher.match_speaker("hon. john smith", known_speakers)
         assert speaker_id == "speaker-1"
         assert match_type == "case_insensitive"
 

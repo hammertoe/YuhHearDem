@@ -2,9 +2,8 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from parsers.models import OrderPaper, OrderPaperSpeaker, AgendaItem
+from parsers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
 from services.gemini import GeminiClient
 
 

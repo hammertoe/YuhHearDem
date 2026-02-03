@@ -1,18 +1,20 @@
 """Database connection and session management"""
 
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
+
 from app.config import get_settings
 
 Base = declarative_base()
 
-_engine: Optional[create_async_engine] = None
-_async_session_maker: Optional[async_sessionmaker] = None
+_engine: create_async_engine | None = None
+_async_session_maker: async_sessionmaker | None = None
 
 
 def get_engine():
@@ -45,7 +47,7 @@ def get_session_maker():
     return _async_session_maker
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency for getting async database sessions"""
     async_session_maker = get_session_maker()
     async with async_session_maker() as session:

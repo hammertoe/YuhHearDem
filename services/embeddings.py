@@ -1,13 +1,12 @@
 """Vector embeddings service"""
 
-from typing import List, Optional
 from services.gemini import GeminiClient
 
 
 class EmbeddingService:
     """Service for generating vector embeddings."""
 
-    def __init__(self, gemini_client: Optional[GeminiClient] = None):
+    def __init__(self, gemini_client: GeminiClient | None = None):
         """Initialize embedding service.
 
         Args:
@@ -17,8 +16,8 @@ class EmbeddingService:
 
     def generate_embeddings(
         self,
-        texts: List[str],
-    ) -> List[List[float]]:
+        texts: list[str],
+    ) -> list[list[float]]:
         """
         Generate embeddings for texts.
 
@@ -46,13 +45,13 @@ class EmbeddingService:
             raise ImportError(
                 "sentence-transformers not installed. "
                 "Install with: pip install sentence-transformers"
-            )
+            ) from None
 
     def generate_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         batch_size: int = 32,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Generate embeddings in batches for large datasets.
 

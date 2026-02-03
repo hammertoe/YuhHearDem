@@ -1,12 +1,9 @@
 """Search API endpoints - hybrid vector + text search"""
 
-from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import VideoResponse, SpeakerResponse, EntityResponse
 from app.dependencies import get_db_session
-
 
 router = APIRouter(prefix="/api/search", tags=["Search"])
 
@@ -15,10 +12,10 @@ router = APIRouter(prefix="/api/search", tags=["Search"])
 async def search(
     db: AsyncSession = Depends(get_db_session),
     query: str = Query(..., description="Search query"),
-    type: Optional[str] = Query(
+    type: str | None = Query(
         "all", description="Search type: 'all', 'entities', 'transcripts', 'speakers'"
     ),
-    chamber: Optional[str] = Query(None, description="Filter by chamber"),
+    chamber: str | None = Query(None, description="Filter by chamber"),
     limit: int = Query(10, ge=1, le=50, description="Max results"),
 ):
     """
@@ -43,8 +40,8 @@ async def search(
 
     if type in ["all", "entities"]:
         from sqlalchemy import select
+
         from models.entity import Entity
-        from sqlalchemy.ext.asyncio import AsyncSession
 
         query = select(Entity)
 
@@ -70,8 +67,8 @@ async def search(
 
     if type in ["all", "transcripts"]:
         from sqlalchemy import select
+
         from models.video import Video
-        from sqlalchemy.ext.asyncio import AsyncSession
 
         query = select(Video)
 
@@ -97,8 +94,8 @@ async def search(
 
     if type in ["all", "speakers"]:
         from sqlalchemy import select
+
         from models.speaker import Speaker
-        from sqlalchemy.ext.asyncio import AsyncSession
 
         query = select(Speaker)
 
@@ -130,7 +127,7 @@ async def search(
 async def search_entities(
     db: AsyncSession = Depends(get_db_session),
     query: str = Query(..., description="Search query"),
-    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    entity_type: str | None = Query(None, description="Filter by entity type"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):
     """
@@ -146,8 +143,8 @@ async def search_entities(
         List of matching entities
     """
     from sqlalchemy import select
+
     from models.entity import Entity
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     query = select(Entity)
 
@@ -181,7 +178,7 @@ async def search_entities(
 async def search_speakers(
     db: AsyncSession = Depends(get_db_session),
     query: str = Query(..., description="Search query"),
-    chamber: Optional[str] = Query(None, description="Filter by chamber"),
+    chamber: str | None = Query(None, description="Filter by chamber"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):
     """
@@ -197,8 +194,8 @@ async def search_speakers(
         List of matching speakers
     """
     from sqlalchemy import select
+
     from models.speaker import Speaker
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     query = select(Speaker)
 

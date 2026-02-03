@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -19,11 +19,11 @@ class GeminiClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "gemini-3-flash-preview",
         temperature: float = 0.0,
         max_output_tokens: int = 65536,
-        thinking_budget: Optional[int] = None,
+        thinking_budget: int | None = None,
     ):
         """
         Initialize Gemini client.
@@ -66,12 +66,10 @@ class GeminiClient:
             preview_length = 500
             start_preview = response_text[:preview_length]
             end_preview = (
-                response_text[-preview_length:]
-                if len(response_text) > preview_length
-                else ""
+                response_text[-preview_length:] if len(response_text) > preview_length else ""
             )
 
-            error_msg = f"Failed to parse JSON response"
+            error_msg = "Failed to parse JSON response"
             if context:
                 error_msg += f" ({context})"
             error_msg += f"\nOriginal error: {str(e)}"
@@ -86,7 +84,7 @@ class GeminiClient:
         self,
         pdf_path: Path,
         prompt: str,
-        response_schema: Optional[dict] = None,
+        response_schema: dict | None = None,
     ) -> dict[str, Any]:
         """
         Analyze a PDF using Gemini vision with optional structured output.
@@ -131,11 +129,9 @@ class GeminiClient:
                 )
 
                 # Parse response with enhanced error messages
-                return self._safe_json_parse(
-                    response.text, context="PDF vision analysis"
-                )
+                return self._safe_json_parse(response.text, context="PDF vision analysis")
 
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
                     delay = self.RETRY_DELAY_BASE * attempt
                     time.sleep(delay)
@@ -147,10 +143,10 @@ class GeminiClient:
         self,
         video_url: str,
         prompt: str,
-        response_schema: Optional[dict] = None,
+        response_schema: dict | None = None,
         fps: float = 0.5,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> dict[str, Any]:
         """
         Analyze a YouTube video and generate transcript.
@@ -215,11 +211,9 @@ class GeminiClient:
                 )
 
                 # Parse response with enhanced error messages
-                return self._safe_json_parse(
-                    response.text, context="video transcript analysis"
-                )
+                return self._safe_json_parse(response.text, context="video transcript analysis")
 
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
                     delay = self.RETRY_DELAY_BASE * attempt
                     time.sleep(delay)
@@ -231,7 +225,7 @@ class GeminiClient:
         self,
         transcript_data: dict,
         prompt: str,
-        response_schema: Optional[dict] = None,
+        response_schema: dict | None = None,
     ) -> dict[str, Any]:
         """
         Extract entities and concepts from structured transcript.
@@ -281,7 +275,7 @@ class GeminiClient:
                 # Parse response with enhanced error messages
                 return self._safe_json_parse(response.text, context="entity extraction")
 
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
                     delay = self.RETRY_DELAY_BASE * attempt
                     time.sleep(delay)

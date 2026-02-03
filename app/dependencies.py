@@ -1,17 +1,18 @@
 """Dependency injection utilities"""
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import get_db
 from app.config import get_settings
+from core.database import get_db
 from services.gemini import GeminiClient
 from services.parliamentary_agent import ParliamentaryAgent
 from storage.knowledge_graph_store import KnowledgeGraphStore
 
 
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session() -> AsyncGenerator[AsyncSession]:
     """Dependency for getting database session"""
     async for session in get_db():
         yield session

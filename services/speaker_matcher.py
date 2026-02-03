@@ -1,6 +1,5 @@
 """Speaker matching with fuzzy deduplication"""
 
-from typing import Optional, Tuple
 from thefuzz import fuzz
 
 from app.config import get_settings
@@ -61,7 +60,7 @@ class SpeakerMatcher:
         self,
         name: str,
         known_speakers: list[dict],
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """
         Match a speaker name against known speakers.
 
