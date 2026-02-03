@@ -2,6 +2,7 @@
 
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas import VideoResponse, SpeakerResponse, EntityResponse
 from app.dependencies import get_db_session

@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
-from sqlalchemy import String, DateTime, JSON, ForeignKey, Date, UniqueConstraint
+from sqlalchemy import String, DateTime, JSON, ForeignKey, Date
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 

@@ -24,13 +24,13 @@ class Entity(Base):
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     name: Mapped[str] = mapped_column(TEXT, nullable=False)
     canonical_name: Mapped[str] = mapped_column(TEXT, nullable=False)
-    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    aliases: Mapped[list] = mapped_column(JSON, default=lambda: [])
     description: Mapped[Optional[str]] = mapped_column(TEXT)
     importance_score: Mapped[float] = mapped_column(Float, default=0.0)
     legislation_id: Mapped[Optional[UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("legislation.id")
     )
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     first_seen_date: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

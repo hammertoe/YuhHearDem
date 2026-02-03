@@ -3,10 +3,16 @@
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
-from sqlalchemy import String, DateTime, JSON, Integer, ForeignKey, TEXT
+from sqlalchemy import String, DateTime, JSON, Integer, ForeignKey, TEXT, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.dialects.postgresql import VECTOR
 from sqlalchemy.orm import Mapped, mapped_column
+
+try:
+    from pgvector.sqlalchemy import Vector
+
+    VECTOR = Vector
+except ImportError:
+    VECTOR = None
 
 from core.database import Base
 
@@ -26,11 +32,14 @@ class VectorEmbedding(Base):
         index=True,
     )
     sentence_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    embedding: Mapped[list] = mapped_column(VECTOR(384), nullable=False)
+    if VECTOR:
+        embedding: Mapped[list] = mapped_column(VECTOR(384), nullable=False)
+    else:
+        embedding: Mapped[list] = mapped_column(JSON, nullable=False)
     text: Mapped[str] = mapped_column(TEXT, nullable=False)
     speaker_id: Mapped[Optional[str]] = mapped_column(
         String(100), ForeignKey("speakers.canonical_id")
     )
     timestamp_seconds: Mapped[Optional[int]] = mapped_column(Integer)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

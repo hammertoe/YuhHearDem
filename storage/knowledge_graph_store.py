@@ -1,7 +1,8 @@
 """Knowledge graph storage layer"""
 
 from typing import Optional, List, Dict
-from sqlalchemy.ext.asyncio import AsyncSession, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from models.entity import Entity

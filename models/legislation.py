@@ -24,12 +24,12 @@ class Legislation(Base):
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
     type: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[Optional[str]] = mapped_column(String(50))
-    sponsors: Mapped[list] = mapped_column(JSON, default=list)
+    sponsors: Mapped[list] = mapped_column(JSON, default=lambda: [])
     chamber: Mapped[Optional[str]] = mapped_column(String(50))
     parliament_id: Mapped[Optional[str]] = mapped_column(String(100))
     pdf_url: Mapped[Optional[str]] = mapped_column(String)
     description: Mapped[Optional[str]] = mapped_column(TEXT)
-    stages: Mapped[list] = mapped_column(JSON, default=list)
+    stages: Mapped[list] = mapped_column(JSON, default=lambda: [])
     scraped_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
