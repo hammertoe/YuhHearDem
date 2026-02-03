@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from src.models.entity import Entity, EntityType, Mention, Relationship, RelationType, Sentiment
-from src.models.session import SessionTranscript
-from src.services.gemini import GeminiClient
+from models.entity import Entity, EntityType, Mention, Relationship, RelationType, Sentiment
+from parsers.transcript_models import SessionTranscript
+from services.gemini import GeminiClient
 
 # Gemini structured output schema for entity extraction (combined - legacy)
 ENTITY_EXTRACTION_SCHEMA = {
@@ -313,8 +313,6 @@ class EntityExtractor:
         Returns:
             Merged ExtractionResult with all entities and relationships
         """
-        from src.models.session import SessionTranscript
-
         session_id = f"{transcript.chamber}-{transcript.date.isoformat()}"
         all_entities = []
         all_relationships = []
@@ -374,8 +372,6 @@ class EntityExtractor:
         Returns:
             Merged ExtractionResult with all entities and relationships
         """
-        from src.models.session import SessionTranscript, TranscriptAgendaItem
-
         session_id = f"{transcript.chamber}-{transcript.date.isoformat()}"
         all_entities = []
         all_relationships = []
