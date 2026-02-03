@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import get_settings
+from core.database import get_db, Base
 from models.order_paper import OrderPaper as OrderPaperModel
 from models.speaker import Speaker
 from models.video import Video
@@ -30,10 +31,9 @@ logger = logging.getLogger(__name__)
 class OrderPaperIngestor:
     """Ingests order papers into database"""
 
-    def __init__(self, db_engine, gemini_client: GeminiClient):
-        self.engine = db_engine
+    def __init__(self, gemini_client: GeminiClient):
         self.client = gemini_client
-        self.parser = OrderPaperParser(gemini_client=client)
+        self.parser = OrderPaperParser(gemini_client=self.client)
 
     async def ingest_pdf(
         self,
@@ -54,11 +54,7 @@ class OrderPaperIngestor:
         """
         logger.info(f"Ingesting: {pdf_path.name}")
 
-        async_session_maker = async_sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
-
-        async with async_session_maker() as db:
+        async for db in get_db():
             # Check if already ingested
             pdf_hash = self._calculate_hash(pdf_path)
             existing = await db.execute(
@@ -134,7 +130,7 @@ class OrderPaperIngestor:
         youtube_id: str,
         parsed: ParsedOrderPaper,
         chamber: str,
-    ) -> Optional[str]:
+    ):
         """Get or create video record"""
         result = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
         video = result.scalar_one_or_none()
@@ -211,18 +207,13 @@ class OrderPaperIngestor:
         logger.info(f"Found {len(pdf_files)} PDF files")
 
         results = []
-        async_session_maker = async_sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
+        for pdf_path in pdf_files:
+            video_id = None
+            if video_mapping and pdf_path.name in video_mapping:
+                video_id = video_mapping[pdf_path.name]
 
-        async with async_session_maker() as db:
-            for pdf_path in pdf_files:
-                video_id = None
-                if video_mapping and pdf_path.name in video_mapping:
-                    video_id = video_mapping[pdf_path.name]
-
-                result = await self.ingest_pdf(pdf_path, video_id, chamber)
-                results.append({**result, "pdf_path": str(pdf_path)})
+            result = await self.ingest_pdf(pdf_path, video_id, chamber)
+            results.append({**result, "pdf_path": str(pdf_path)})
 
         return results
 
@@ -254,17 +245,11 @@ async def main():
 
     settings = get_settings()
 
-    import google.generativeai as genai
+    import google.genai as genai
 
-    genai.configure(api_key=settings.google_api_key)
-    client = GeminiClient()
+    client = GeminiClient(api_key=settings.google_api_key)
 
-    # Create database engine
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    engine = create_async_engine(settings.database_url)
-
-    ingestor = OrderPaperIngestor(engine, client)
+    ingestor = OrderPaperIngestor(client)
 
     if args.pdf_path.is_file():
         result = await ingestor.ingest_pdf(args.pdf_path, args.video_id, args.chamber)

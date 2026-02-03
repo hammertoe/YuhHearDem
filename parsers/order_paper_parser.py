@@ -3,8 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from src.models.order_paper import AgendaItem, OrderPaper, OrderPaperSpeaker
-from src.services.gemini import GeminiClient
+from parsers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
+from services.gemini import GeminiClient
 
 
 class OrderPaperParser:

@@ -8,11 +8,11 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from src.models.order_paper import OrderPaper
-from src.models.session import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
-from src.models.speaker import Speaker
-from src.services.gemini import GeminiClient
-from thefuzz import fuzz
+from parsers.models import OrderPaper
+from parsers.transcript_models import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
+from models.speaker import Speaker
+from services.gemini import GeminiClient
+from fuzz import fuzz
 
 
 class VideoTranscriptionParser:
