@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import select
+from sqlalchemy import select
 
 from models.entity import Entity
 from storage.knowledge_graph_store import KnowledgeGraphStore

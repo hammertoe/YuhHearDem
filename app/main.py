@@ -69,12 +69,14 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health():
     """Health check endpoint"""
-    from core.database import engine
+    from core.database import get_engine
+    from sqlalchemy import text
 
     db_connected = False
     try:
+        engine = get_engine()
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
             db_connected = True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")

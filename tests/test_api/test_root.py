@@ -1,15 +1,15 @@
 """Test API endpoints"""
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 
 class TestRootEndpoints:
     """Test root and health endpoints"""
 
-    def test_root(self, client: TestClient):
+    async def test_root(self, client: AsyncClient):
         """Test root endpoint returns basic info"""
-        response = client.get("/")
+        response = await client.get("/")
         assert response.status_code == 200
 
         data = response.json()
@@ -18,9 +18,9 @@ class TestRootEndpoints:
         assert "status" in data
         assert data["status"] == "running"
 
-    def test_health_endpoint(self, client: TestClient):
+    async def test_health_endpoint(self, client: AsyncClient):
         """Test health check endpoint"""
-        response = client.get("/health")
+        response = await client.get("/health")
         assert response.status_code == 200
 
         data = response.json()
@@ -28,9 +28,9 @@ class TestRootEndpoints:
         assert "database_connected" in data
         assert "version" in data
 
-    def test_api_info(self, client: TestClient):
+    async def test_api_info(self, client: AsyncClient):
         """Test API information endpoint"""
-        response = client.get("/api")
+        response = await client.get("/api")
         assert response.status_code == 200
 
         data = response.json()

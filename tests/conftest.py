@@ -23,7 +23,7 @@ def set_test_database():
     get_settings.cache_clear()
 
 
-from core.database import Base
+from core.database import Base, reset_engine
 from app.config import get_settings
 
 
@@ -39,15 +39,26 @@ async def db_engine():
     )
 
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     async with engine.begin() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True, scope="function")
+def reset_db_engine():
+    """Reset cached engine between tests"""
+    reset_engine()
+    yield
+    reset_engine()
 
 
 @pytest.fixture(scope="function")
@@ -64,11 +75,26 @@ async def db_session(db_session_maker):
 
 
 @pytest.fixture(scope="function")
-def override_get_db(db_session_maker):
+def override_get_db():
     """Override get_db dependency for testing"""
 
     async def _get_test_db():
-        async with db_session_maker() as session:
+        engine = create_async_engine(
+            TEST_DATABASE_URL,
+            poolclass=NullPool,
+            echo=False,
+        )
+        from sqlalchemy import text
+
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        session_maker = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        async with session_maker() as session:
             try:
                 yield session
                 await session.commit()
@@ -77,44 +103,70 @@ def override_get_db(db_session_maker):
                 raise
             finally:
                 await session.close()
+                await engine.dispose()
 
     return _get_test_db
 
 
 @pytest.fixture(scope="function")
 async def client(override_get_db):
-    """Create test FastAPI client"""
-    from fastapi.testclient import TestClient
+    """Create async test client"""
+    from httpx import AsyncClient
+    from httpx import ASGITransport
+    from asgi_lifespan import LifespanManager
     from app.main import app
     from core.database import get_db
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
-        yield test_client
+    async with LifespanManager(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as test_client:
+            yield test_client
 
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+@pytest.fixture
+def anyio_backend():
+    """Limit anyio to asyncio backend"""
+    return "asyncio"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def verify_postgres():
     """Verify PostgreSQL is running before tests"""
-    from sqlalchemy import create_engine, text
+    import asyncio
+    import asyncpg
 
-    engine = create_engine("postgresql://postgres:postgres@localhost:5432/postgres")
+    async def _check():
+        conn = await asyncpg.connect(
+            user="postgres",
+            password="postgres",
+            database="postgres",
+            host="localhost",
+            port=5432,
+        )
+        await conn.execute("SELECT 1")
+        await conn.close()
 
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        asyncio.run(_check())
     except Exception as e:
         pytest.skip(f"PostgreSQL not available: {e}. Run 'docker-compose up' first.")
-    finally:
-        engine.dispose()
+
+
+@pytest.fixture
+def mock_db():
+    """Mock database session for testing"""
+    from unittest.mock import AsyncMock, MagicMock
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    mock = AsyncMock(spec=AsyncSession)
+    mock.execute = AsyncMock()
+    mock.commit = AsyncMock()
+    mock.rollback = AsyncMock()
+    mock.refresh = AsyncMock()
+    return mock

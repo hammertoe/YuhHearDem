@@ -22,6 +22,9 @@ class Session(Base):
     )
     user_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+    last_updated: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
     archived: Mapped[bool] = mapped_column(Boolean, default=False)

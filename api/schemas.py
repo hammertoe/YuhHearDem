@@ -141,6 +141,7 @@ class StructuredResponse(BaseModel):
     intro_message: str
     response_cards: List[ResponseCard]
     follow_up_suggestions: List[str]
+    entities: Optional[List[dict]] = None
 
 
 class QueryResponse(BaseModel):

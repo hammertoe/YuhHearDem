@@ -1,25 +1,17 @@
 """Chat and query API endpoints"""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Set
-from uuid import UUID
+from typing import Set
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.session import Session
 from models.message import Message
 from models.entity import Entity
 from models.relationship import Relationship
-from api.schemas import (
-    MessageCreate,
-    MessageResponse,
-    QueryRequest,
-    StructuredResponse,
-    ResponseCard,
-    QueryResponse,
-)
+from api.schemas import StructuredResponse, ResponseCard, QueryResponse
 from app.dependencies import get_db_session, get_parliamentary_agent
 from services.parliamentary_agent import ParliamentaryAgent
 
@@ -61,6 +53,8 @@ async def process_query(
             select(Session).where(Session.session_id == session_id)
         )
         session = result.scalar_one_or_none()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
     else:
         import uuid
 
@@ -87,6 +81,7 @@ async def process_query(
 
     if agent_response.get("success"):
         answer = agent_response.get("answer", "")
+        entities = agent_response.get("entities")
 
         assistant_response = StructuredResponse(
             intro_message="Based on my analysis of parliamentary records:",
@@ -101,12 +96,8 @@ async def process_query(
                 "What legislation is related?",
                 "Show me all mentions",
             ],
+            entities=entities,
         )
-
-        structured_response_dict = assistant_response.model_dump()
-        if agent_response.get("entities"):
-            structured_response_dict["entities"] = agent_response["entities"]
-
     else:
         assistant_response = StructuredResponse(
             intro_message="I encountered an issue while processing your query:",
@@ -122,7 +113,6 @@ async def process_query(
                 "Browse recent sessions",
             ],
         )
-        structured_response_dict = assistant_response.model_dump()
 
     assistant_message = Message(
         session_id=session.id,
@@ -177,6 +167,8 @@ async def process_query_stream(
             select(Session).where(Session.session_id == session_id)
         )
         session = result.scalar_one_or_none()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
     else:
         import uuid
 
@@ -209,6 +201,7 @@ async def process_query_stream(
 
         if agent_response.get("success"):
             answer = agent_response.get("answer", "")
+            entities = agent_response.get("entities")
 
             assistant_response = StructuredResponse(
                 intro_message="Based on my analysis of the parliamentary records:",
@@ -223,6 +216,7 @@ async def process_query_stream(
                     "What legislation is related?",
                     "Show me all mentions",
                 ],
+                entities=entities,
             )
         else:
             assistant_response = StructuredResponse(
@@ -417,7 +411,9 @@ async def get_session_graph(
             response = message.structured_response
             if response.get("entities"):
                 for entity in response["entities"]:
-                    entity_ids.add(entity.get("entity_id"))
+                    entity_id = entity.get("entity_id")
+                    if entity_id:
+                        entity_ids.add(entity_id)
 
     # Get entity details
     nodes = []

@@ -2,6 +2,7 @@
 
 from typing import Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
+from google.genai import types
 
 from services.gemini import GeminiClient
 from services.parliamentary_agent_tools import ParliamentaryAgentTools
@@ -47,10 +48,12 @@ class ParliamentaryAgent:
         while iteration < max_iterations:
             iteration += 1
 
-            prompt = self._build_agent_prompt(user_query, context, iteration)
+            prompt = self._build_agent_prompt(
+                user_query, context, iteration, max_iterations
+            )
             tools_dict = self.tools.get_tools_dict()
 
-            response = await self.client.models.generate_content(
+            response = await self.client.client.models.generate_content(
                 model="gemini-2-flash-preview",
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -75,7 +78,7 @@ class ParliamentaryAgent:
 
                 return {
                     "success": True,
-                    "answer": self._generate_answer_from_results([result], user_query),
+                    "answer": result.get("answer", ""),
                     "entities": entities_found,
                     "context": context,
                     "iteration": iteration,
@@ -91,11 +94,21 @@ class ParliamentaryAgent:
                     "iteration": iteration,
                 }
 
+        return {
+            "success": False,
+            "error": "Max iterations reached without a successful response",
+            "answer": None,
+            "entities": entities_found,
+            "context": context,
+            "iteration": iteration,
+        }
+
     def _build_agent_prompt(
-        self, user_query: str, context: List[str], iteration: int
+        self, user_query: str, context: List[str], iteration: int, max_iterations: int
     ) -> str:
         """Build prompt for agent iteration."""
         context_info = ""
+        tools_info = ""
         if iteration > 1:
             context_info = f"\n\nPrevious research:"
 
@@ -159,49 +172,49 @@ Begin your analysis."""
         lines = response_text.split("\n")
 
         current_tool = None
-        current_data = None
+        current_data_lines: List[str] = []
 
         for line in lines:
             if line.startswith("Tool: "):
-                if current_tool:
-                    tool_results[-1]["data"] = {
-                        "tool": current_tool,
-                        "data": [],
-                    }
+                if current_tool and current_data_lines:
+                    try:
+                        data = json.loads("\n".join(current_data_lines))
+                        tool_results[-1]["data"].update(data)
+                    except json.JSONDecodeError:
+                        pass
 
-                # Extract tool name
-                tool_name = line[5:].strip()
+                tool_name = line[6:].strip()
                 current_tool = tool_name
-                current_data = tool_results[-1]["data"]
-
+                tool_results.append({"tool": current_tool, "data": {}})
+                current_data_lines = []
                 continue
 
-            elif line.startswith("Data: "):
-                if line == "Data: {}":
+            if line.startswith("Data: "):
+                if line.strip() == "Data: {}":
+                    current_data_lines = []
                     continue
 
-                # Parse data lines
-                data_lines = []
-                for line in lines:
-                    if line.startswith("    "):
-                        break
+                data_str = line[6:].strip()
+                if data_str:
+                    current_data_lines = [data_str]
+                continue
 
-                    data_lines.append(line[4:])
+            if current_tool and line.startswith("    "):
+                current_data_lines.append(line[4:])
 
-                try:
-                    data = json.loads("\n".join(data_lines))
-
-                    if tool_results[-1]["data"]:
-                        tool_results[-1]["data"].update(data)
-
-                except json.JSONDecodeError:
-                    current_data = None
+        if current_tool and current_data_lines:
+            try:
+                data = json.loads("\n".join(current_data_lines))
+                tool_results[-1]["data"].update(data)
+            except json.JSONDecodeError:
+                pass
 
         return {
             "success": True,
             "answer": self._generate_answer_from_results(tool_results, user_query),
             "context": [],
             "iteration": 0,
+            "tool_results": tool_results,
         }
 
     def _extract_context_from_response(self, result: Dict) -> List[str]:
@@ -353,8 +366,8 @@ Begin your analysis."""
                     f"Relationship: {source_entity_id} → {target_entity_id} ({relation})"
                 )
 
-        if citation.get("evidence"):
-            add_section(f'"{citation.get("evidence", "")}"')
+            if citation.get("evidence"):
+                add_section(f'"{citation.get("evidence", "")}"')
 
         sections.append("\n")
 
