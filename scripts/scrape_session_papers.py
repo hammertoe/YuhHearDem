@@ -4,6 +4,8 @@
 import argparse
 import logging
 from pathlib import Path
+from typing import Optional
+from datetime import datetime
 
 try:
     import requests
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class SessionPaperScraper:
     """Scrapes order papers from parliament website"""
 
-    def __init__(self, base_url: str = "https://www.parliament.barbados.gov.bb"):
+    def __init__(self, base_url: str = "https://www.barbadosparliament.com"):
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update(
@@ -30,7 +32,7 @@ class SessionPaperScraper:
     def scrape_session_papers(
         self,
         chamber: str = "house",
-        max_papers: int | None = None,
+        max_papers: Optional[int] = None,
     ) -> list[dict]:
         """
         Scrape session papers from parliament website.
@@ -44,17 +46,13 @@ class SessionPaperScraper:
         """
         logger.info(f"Scraping {chamber} session papers...")
 
-        # NOTE: This is a template - actual scraping will depend on
-        # the structure of the Barbados Parliament website
-        # You may need to adjust the URL patterns and parsing logic
-
         papers = []
 
-        # Example URLs (adjust based on actual website):
+        # Actual URLs for Barbados Parliament website
         if chamber == "house":
-            url = f"{self.base_url}/order-papers/house-of-assembly"
+            url = f"{self.base_url}/order_papers/search/type/1"
         else:
-            url = f"{self.base_url}/order-papers/senate"
+            url = f"{self.base_url}/order_papers/search/type/2"
 
         try:
             response = self.session.get(url, timeout=30)
@@ -62,18 +60,35 @@ class SessionPaperScraper:
 
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # Find links to PDFs (adjust selectors based on actual HTML)
-            pdf_links = soup.select("a[href$='.pdf']")
+            # Find table rows with order papers
+            table = soup.find("table", class_="table-hover")
+            if not table:
+                logger.warning("No table found on page")
+                return []
 
-            for i, link in enumerate(pdf_links, 1):
+            rows = table.find_all("tr")[1:]  # Skip header row
+
+            for i, row in enumerate(rows, 1):
                 if max_papers and i > max_papers:
                     break
 
-                pdf_url = link.get("href")
-                title = link.get_text(strip=True) or f"Session Paper {i}"
+                # Extract data from table cells
+                cells = row.find_all("td")
+                if len(cells) < 2:
+                    continue
 
-                # Extract date from title or URL if possible
-                session_date = self._extract_date(title)
+                # First cell: PDF link and title
+                title_cell = cells[0]
+                pdf_link = title_cell.find("a", href=True)
+                if not pdf_link:
+                    continue
+
+                pdf_url = pdf_link.get("href")
+                title = pdf_link.get_text(strip=True) or f"Session Paper {i}"
+
+                # Second cell: posted date
+                date_text = cells[1].get_text(strip=True)
+                session_date = self._parse_date(date_text)
 
                 logger.info(f"Found: {title} - {pdf_url}")
 
@@ -143,7 +158,6 @@ class SessionPaperScraper:
         for paper in papers:
             pdf_url = paper["pdf_url"]
             filename = self._sanitize_filename(paper["title"])
-
             output_path = output_dir / f"{filename}.pdf"
 
             if output_path.exists():
@@ -156,13 +170,25 @@ class SessionPaperScraper:
 
         return results
 
-    def _extract_date(self, text: str) -> str | None:
-        """Extract date from text (YYYY-MM-DD)"""
-        import re
+    def _parse_date(self, date_text: str) -> Optional[str]:
+        """Parse date from text (YYYY-MM-DD)"""
+        date_text = date_text.strip()
 
-        date_pattern = r"(\d{4}-\d{2}-\d{2})|(\d{1,2}\s+\w+\s+\d{4})"
-        match = re.search(date_pattern, text)
-        return match.group(0) if match else None
+        # Try common date formats
+        formats = [
+            "%Y-%m-%d",  # 2026-01-20
+            "%d %B %Y",  # 20 January 2026
+            "%B %d, %Y",  # January 20, 2026
+        ]
+
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(date_text, fmt)
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return None
 
     def _sanitize_filename(self, filename: str) -> str:
         """Sanitize filename for filesystem"""
