@@ -19,7 +19,7 @@ class OrderPaper(Base):
     video_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("videos.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     pdf_path: Mapped[str] = mapped_column(String, nullable=False)

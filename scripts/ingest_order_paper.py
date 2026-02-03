@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import get_settings
-from core.database import get_db, Base
+from core.database import Base
 from models.order_paper import OrderPaper as OrderPaperModel
 from models.speaker import Speaker
 from models.video import Video
@@ -37,6 +37,7 @@ class OrderPaperIngestor:
 
     async def ingest_pdf(
         self,
+        db_session_maker: async_sessionmaker,
         pdf_path: Path,
         video_id: Optional[str] = None,
         chamber: str = "house",
@@ -45,6 +46,7 @@ class OrderPaperIngestor:
         Parse and save an order paper PDF.
 
         Args:
+            db_session_maker: Session maker
             pdf_path: Path to PDF file
             video_id: Associated YouTube video ID (optional)
             chamber: Chamber ('house' or 'senate')
@@ -54,7 +56,7 @@ class OrderPaperIngestor:
         """
         logger.info(f"Ingesting: {pdf_path.name}")
 
-        async for db in get_db():
+        async with db_session_maker() as db:
             # Check if already ingested
             pdf_hash = self._calculate_hash(pdf_path)
             existing = await db.execute(
@@ -188,6 +190,7 @@ class OrderPaperIngestor:
 
     async def ingest_directory(
         self,
+        db_session_maker: async_sessionmaker,
         pdf_dir: Path,
         video_mapping: Optional[dict] = None,
         chamber: str = "house",
@@ -196,6 +199,7 @@ class OrderPaperIngestor:
         Ingest all PDFs from directory.
 
         Args:
+            db_session_maker: Session maker
             pdf_dir: Directory containing PDFs
             video_mapping: Dict mapping PDF filenames to YouTube IDs
             chamber: Chamber
@@ -212,7 +216,7 @@ class OrderPaperIngestor:
             if video_mapping and pdf_path.name in video_mapping:
                 video_id = video_mapping[pdf_path.name]
 
-            result = await self.ingest_pdf(pdf_path, video_id, chamber)
+            result = await self.ingest_pdf(db_session_maker, pdf_path, video_id, chamber)
             results.append({**result, "pdf_path": str(pdf_path)})
 
         return results
@@ -249,10 +253,16 @@ async def main():
 
     client = GeminiClient(api_key=settings.google_api_key)
 
+    # Create database engine and session maker
+    engine = create_async_engine(settings.database_url)
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
     ingestor = OrderPaperIngestor(client)
 
     if args.pdf_path.is_file():
-        result = await ingestor.ingest_pdf(args.pdf_path, args.video_id, args.chamber)
+        result = await ingestor.ingest_pdf(
+            session_maker, args.pdf_path, args.video_id, args.chamber
+        )
         print(result)
     elif args.pdf_path.is_dir():
         video_mapping = {}
@@ -261,7 +271,9 @@ async def main():
 
             video_mapping = json.loads(args.video_mapping.read_text())
 
-        results = await ingestor.ingest_directory(args.pdf_path, video_mapping, args.chamber)
+        results = await ingestor.ingest_directory(
+            session_maker, args.pdf_path, video_mapping, args.chamber
+        )
 
         success = sum(1 for r in results if r["status"] == "success")
         skipped = sum(1 for r in results if r["status"] == "skipped")
