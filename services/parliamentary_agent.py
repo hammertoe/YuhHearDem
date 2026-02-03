@@ -65,7 +65,26 @@ class ParliamentaryAgent:
             if response_text is None:
                 response_text = ""
 
-            result = self._parse_agent_response(response_text, user_query)
+            function_calls, part_text = self._extract_function_calls_and_text(response)
+            tool_results = []
+
+            if function_calls:
+                tool_results = await self._execute_tool_calls(
+                    db,
+                    function_calls,
+                    tools_dict.get("tools", {}),
+                )
+                result = {
+                    "success": True,
+                    "answer": self._generate_answer_from_results(tool_results, user_query),
+                    "context": [],
+                    "iteration": 0,
+                    "tool_results": tool_results,
+                }
+            else:
+                if not response_text and part_text:
+                    response_text = part_text
+                result = self._parse_agent_response(response_text, user_query)
 
             if result["success"]:
                 # Extract entities found during this iteration
@@ -225,6 +244,60 @@ Begin your analysis."""
             "tool_results": tool_results,
         }
 
+    def _extract_function_calls_and_text(self, response) -> tuple[list, str]:
+        """Extract function calls and any plain text from the response parts."""
+        function_calls = []
+        text_chunks = []
+
+        candidates = getattr(response, "candidates", []) or []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            if not content:
+                continue
+            parts = getattr(content, "parts", []) or []
+            for part in parts:
+                function_call = getattr(part, "function_call", None)
+                if function_call:
+                    function_calls.append(function_call)
+                text = getattr(part, "text", None)
+                if text:
+                    text_chunks.append(text)
+
+        return function_calls, "\n".join(text_chunks).strip()
+
+    async def _execute_tool_calls(self, db: AsyncSession, calls: list, tools: dict) -> list[dict]:
+        """Execute tool calls and return tool results list."""
+        results = []
+
+        for call in calls:
+            tool_name = getattr(call, "name", None)
+            tool_args = getattr(call, "args", {}) or {}
+            tool_fn = tools.get(tool_name)
+
+            if not tool_fn:
+                results.append(
+                    {
+                        "tool": tool_name or "unknown",
+                        "data": {
+                            "status": "error",
+                            "error": f"Unknown tool: {tool_name}",
+                        },
+                    }
+                )
+                continue
+
+            tool_response = await tool_fn(db, **tool_args)
+            results.append(
+                {
+                    "tool": tool_name,
+                    "data": tool_response.get("data", {})
+                    if isinstance(tool_response, dict)
+                    else {},
+                }
+            )
+
+        return results
+
     def _extract_context_from_response(self, result: dict) -> list[str]:
         """Extract context for next iteration."""
         context = []
@@ -233,7 +306,8 @@ Begin your analysis."""
             tool = tool_result["tool"]
 
             if tool == "find_entity" and tool_result["data"]:
-                entity = tool_result["data"].get("entities", [{}])
+                entities = tool_result["data"].get("entities", [])
+                entity = entities[0] if entities else {}
                 context.append(f"Found entity: {entity.get('name', 'Unknown')}")
                 if entity:
                     context.append(f"  Entity type: {entity.get('entity_type', 'Unknown')}")
@@ -286,7 +360,8 @@ Begin your analysis."""
             data = tool_result["data"]
 
             if tool == "find_entity" and data.get("entities"):
-                entity = data.get("entities", [{}])
+                entities = data.get("entities", [])
+                entity = entities[0] if entities else {}
                 if entity:
                     entities_mentioned.append(
                         f"- {entity['name']} (Type: {entity.get('entity_type', 'Unknown')})"
