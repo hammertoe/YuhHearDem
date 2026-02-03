@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, Mock
 
+from models.session import Session  # noqa: F401
+
 import pytest
 
 
@@ -86,6 +88,37 @@ class TestChatAPI:
         data = response.json()
         assert data["session_id"] == initial_data["session_id"]
         assert data["user_id"] == "test-user-456"
+
+        app.dependency_overrides.clear()
+
+    @pytest.mark.anyio
+    async def test_process_query_stream_unknown_session_creates_new(self, client):
+        """Test streaming query with unknown session creates new session"""
+        mock_agent = Mock()
+        mock_agent.query = AsyncMock(
+            return_value={
+                "success": True,
+                "answer": "Streaming response content",
+                "context": [],
+                "iteration": 1,
+            }
+        )
+
+        from api.routes.chat import get_parliamentary_agent
+        from app.main import app
+
+        app.dependency_overrides[get_parliamentary_agent] = lambda: mock_agent
+
+        response = await client.post(
+            "/api/query/stream",
+            json={
+                "query": "Test streaming with unknown session",
+                "user_id": "test-user-stream",
+                "session_id": "non-existent-session",
+            },
+        )
+
+        assert response.status_code == 200
 
         app.dependency_overrides.clear()
 

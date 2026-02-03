@@ -51,7 +51,13 @@ async def process_query(
         result = await db.execute(select(Session).where(Session.session_id == session_id))
         session = result.scalar_one_or_none()
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
+            session = Session(
+                session_id=session_id,
+                user_id=user_id,
+            )
+            db.add(session)
+            await db.commit()
+            await db.refresh(session)
     else:
         import uuid
 
@@ -163,7 +169,13 @@ async def process_query_stream(
         result = await db.execute(select(Session).where(Session.session_id == session_id))
         session = result.scalar_one_or_none()
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
+            session = Session(
+                session_id=session_id,
+                user_id=user_id,
+            )
+            db.add(session)
+            await db.commit()
+            await db.refresh(session)
     else:
         import uuid
 

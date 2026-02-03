@@ -217,17 +217,113 @@ class ParliamentaryAgentTools:
 
     def get_tools_dict(self) -> dict[str, callable]:
         """
-        Get all tools as dictionary for Gemini function calling.
+        Get tools for Gemini function calling.
 
         Returns:
-            Dictionary of tool_name → tool_function
+            Dictionary with function declarations and tool callables
         """
         return {
-            "find_entity": lambda db, **kwargs: self.find_entity(db, **kwargs),
-            "get_relationships": lambda db, **kwargs: self.get_relationships(db, **kwargs),
-            "get_mentions": lambda db, **kwargs: self.get_mentions(db, **kwargs),
-            "get_entity_details": lambda db, **kwargs: self.get_entity_details(db, **kwargs),
-            "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(db, **kwargs),
-            "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(db, **kwargs),
-            "search_semantic": lambda db, **kwargs: self.search_semantic(db, **kwargs),
+            "function_declarations": self._get_function_declarations(),
+            "tools": {
+                "find_entity": lambda db, **kwargs: self.find_entity(db, **kwargs),
+                "get_relationships": lambda db, **kwargs: self.get_relationships(db, **kwargs),
+                "get_mentions": lambda db, **kwargs: self.get_mentions(db, **kwargs),
+                "get_entity_details": lambda db, **kwargs: self.get_entity_details(db, **kwargs),
+                "search_by_date_range": lambda db, **kwargs: self.search_by_date_range(
+                    db, **kwargs
+                ),
+                "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(db, **kwargs),
+                "search_semantic": lambda db, **kwargs: self.search_semantic(db, **kwargs),
+            },
         }
+
+    def _get_function_declarations(self) -> list[dict]:
+        """Define tool function declarations for Gemini."""
+        return [
+            {
+                "name": "find_entity",
+                "description": "Find entities by name or type.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "entity_type": {"type": "string"},
+                    },
+                    "required": ["name"],
+                },
+            },
+            {
+                "name": "get_relationships",
+                "description": "Get relationships for an entity.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                        "direction": {
+                            "type": "string",
+                            "enum": ["incoming", "outgoing", "all"],
+                        },
+                    },
+                    "required": ["entity_id"],
+                },
+            },
+            {
+                "name": "get_mentions",
+                "description": "Get mentions of an entity with timestamps.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                        "video_id": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["entity_id"],
+                },
+            },
+            {
+                "name": "get_entity_details",
+                "description": "Get full entity details.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                    },
+                    "required": ["entity_id"],
+                },
+            },
+            {
+                "name": "search_by_date_range",
+                "description": "Search for sessions within a date range.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date_from": {"type": "string"},
+                        "date_to": {"type": "string"},
+                        "chamber": {"type": "string"},
+                    },
+                },
+            },
+            {
+                "name": "search_by_speaker",
+                "description": "Find all videos where a speaker appears.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "speaker_id": {"type": "string"},
+                    },
+                    "required": ["speaker_id"],
+                },
+            },
+            {
+                "name": "search_semantic",
+                "description": "Semantic search over transcript sentences.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query_text": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["query_text"],
+                },
+            },
+        ]
