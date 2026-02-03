@@ -47,9 +47,6 @@ htmlcov/
 *.cover
 .hypothesis/
 
-# Alembic
-alembic.ini
-
 # Logs
 *.log
 

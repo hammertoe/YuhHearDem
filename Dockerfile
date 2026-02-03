@@ -40,7 +40,6 @@ COPY models/ ./models/
 COPY parsers/ ./parsers/
 COPY services/ ./services/
 COPY static/ ./static/
-COPY templates/ ./templates/
 COPY migrations/ ./migrations/
 COPY alembic.ini .
 
