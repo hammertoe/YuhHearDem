@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YuhHearDem - Knowledge Graph Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">
+                    Knowledge Graph
+                </h1>
+                <p class="text-gray-600">
+                    Interactive visualization of entities and relationships from your session.
+                </p>
+            </div>
+            <a href="/" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                Back to Chat
+            </a>
+        </header>
+
+        <!-- Session Selector -->
+        <div class="mb-6 p-4 bg-white rounded-lg shadow">
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                Session ID:
+            </label>
+            <div class="flex gap-2">
+                <input
+                    type="text"
+                    id="session-input"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter session ID (from chat)"
+                    value=""
+                />
+                <button
+                    type="button"
+                    id="load-graph-btn"
+                    class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Load Graph
+                </button>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div id="graph-status" class="mb-4 p-3 rounded bg-yellow-100 text-yellow-800">
+            <span class="font-semibold">Enter a session ID and click Load Graph</span>
+        </div>
+
+        <!-- Graph Container -->
+        <div id="graph-container" class="bg-white rounded-lg shadow-lg overflow-hidden" style="height: 600px;">
+            <div id="graph-canvas" class="w-full h-full"></div>
+        </div>
+
+        <!-- Legend -->
+        <div id="legend" class="mt-4 p-4 bg-white rounded-lg shadow hidden">
+            <h3 class="text-lg font-semibold mb-3">Entity Types</h3>
+            <div id="legend-items" class="space-y-2"></div>
+        </div>
+
+        <!-- Node Details Panel -->
+        <div id="node-details" class="mt-4 p-4 bg-white rounded-lg shadow hidden">
+            <h3 class="text-lg font-semibold mb-3">Entity Details</h3>
+            <div id="node-details-content"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentGraphData = null;
+        let simulation = null;
+
+        // Entity type colors
+        const typeColors = {
+            person: '#3B82F6',
+            organization: '#10B981',
+            place: '#F59E0B',
+            law: '#EF4444',
+            concept: '#8B5CF6',
+            event: '#EC4899',
+            bill: '#6366F1',
+            resolution: '#14B8A6',
+        };
+
+        // Load graph data
+        async function loadGraph(sessionId) {
+            const statusEl = document.getElementById('graph-status');
+            const loadBtn = document.getElementById('load-graph-btn');
+
+            if (!sessionId) {
+                statusEl.className = 'mb-4 p-3 rounded bg-yellow-100 text-yellow-800';
+                statusEl.innerHTML = '<span class="font-semibold">Please enter a session ID</span>';
+                return;
+            }
+
+            statusEl.className = 'mb-4 p-3 rounded bg-blue-100 text-blue-800';
+            statusEl.innerHTML = '<span class="font-semibold">Loading graph data...</span>';
+            loadBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_URL}/session/${sessionId}/graph`);
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.nodes.length === 0) {
+                    statusEl.className = 'mb-4 p-3 rounded bg-yellow-100 text-yellow-800';
+                    statusEl.innerHTML = '<span class="font-semibold">No entities found in this session. Ask questions in the chat first!</span>';
+                    return;
+                }
+
+                currentGraphData = data;
+                renderGraph(data);
+
+                statusEl.className = 'mb-4 p-3 rounded bg-green-100 text-green-800';
+                statusEl.innerHTML = `<span class="font-semibold">Loaded ${data.nodes.length} nodes and ${data.edges.length} relationships</span>`;
+
+                // Show legend
+                showLegend(data.nodes);
+
+            } catch (error) {
+                statusEl.className = 'mb-4 p-3 rounded bg-red-100 text-red-800';
+                statusEl.innerHTML = `<span class="font-semibold">Error: ${error.message}</span>`;
+                console.error('Error loading graph:', error);
+            } finally {
+                loadBtn.disabled = false;
+            }
+        }
+
+        // Render D3 force-directed graph
+        function renderGraph(data) {
+            const container = document.getElementById('graph-canvas');
+            container.innerHTML = '';
+
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Create SVG
+            const svg = d3.select('#graph-canvas')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('viewBox', [-width / 2, -height / 2, width, height]);
+
+            // Create arrow marker for edges
+            svg.append('defs')
+                .append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M -5,-5 L 0,0 L -5,5')
+                .attr('fill', '#999');
+
+            // Create simulation
+            simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(0, 0))
+                .force('collision', d3.forceCollide().radius(30));
+
+            // Draw edges
+            const link = svg.append('g')
+                .selectAll('line')
+                .data(data.edges)
+                .join('line')
+                .attr('stroke', '#999')
+                .attr('stroke-width', 1.5)
+                .attr('marker-end', 'url(#arrowhead)');
+
+            // Draw nodes
+            const node = svg.append('g')
+                .selectAll('circle')
+                .data(data.nodes)
+                .join('circle')
+                .attr('r', 15)
+                .attr('fill', d => typeColors[d.type] || '#999')
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 2)
+                .style('cursor', 'pointer')
+                .call(drag(simulation));
+
+            // Add labels
+            const labels = svg.append('g')
+                .selectAll('text')
+                .data(data.nodes)
+                .join('text')
+                .text(d => d.label)
+                .attr('font-size', 10)
+                .attr('fill', '#333')
+                .attr('text-anchor', 'middle')
+                .attr('dy', 25)
+                .style('pointer-events', 'none');
+
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.source.x)
+                    .attr('y2', d => d.source.y);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                labels
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y + 20);
+            });
+
+            // Node click handler
+            node.on('click', (event, d) => {
+                event.stopPropagation();
+                showNodeDetails(d);
+            });
+
+            // Drag functions
+            function drag(simulation) {
+                function dragstarted(event) {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    event.subject.fx = event.subject.x;
+                    event.subject.fy = event.subject.y;
+                }
+
+                function dragged(event) {
+                    event.subject.fx = event.x;
+                    event.subject.fy = event.y;
+                }
+
+                function dragended(event) {
+                    if (!event.active) simulation.alphaTarget(0);
+                    event.subject.fx = null;
+                    event.subject.fy = null;
+                }
+
+                return d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended);
+            }
+
+            // Add zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    svg.selectAll('g')
+                        .attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+        }
+
+        // Show node details
+        function showNodeDetails(node) {
+            const panel = document.getElementById('node-details');
+            const content = document.getElementById('node-details-content');
+
+            content.innerHTML = `
+                <div class="space-y-2">
+                    <div>
+                        <span class="font-semibold">Name:</span> ${node.label}
+                    </div>
+                    <div>
+                        <span class="font-semibold">Type:</span> ${node.type}
+                    </div>
+                    <div>
+                        <span class="font-semibold">ID:</span> ${node.id}
+                    </div>
+                    ${node.metadata.description ? `
+                        <div>
+                            <span class="font-semibold">Description:</span>
+                            <p class="mt-1 text-gray-700">${node.metadata.description}</p>
+                        </div>
+                    ` : ''}
+                    <div>
+                        <span class="font-semibold">Importance Score:</span> ${node.metadata.importance_score.toFixed(2)}
+                    </div>
+                </div>
+            `;
+
+            panel.classList.remove('hidden');
+        }
+
+        // Show legend
+        function showLegend(nodes) {
+            const legendEl = document.getElementById('legend');
+            const legendItems = document.getElementById('legend-items');
+
+            const types = [...new Set(nodes.map(n => n.type))];
+
+            legendItems.innerHTML = types.map(type => `
+                <div class="flex items-center">
+                    <div class="w-4 h-4 rounded-full mr-2" style="background-color: ${typeColors[type]}"></div>
+                    <span class="text-sm capitalize">${type}</span>
+                </div>
+            `).join('');
+
+            legendEl.classList.remove('hidden');
+        }
+
+        // Initialize
+        function init() {
+            // Restore session ID from localStorage
+            const savedSessionId = localStorage.getItem('yuhheardem_session_id');
+            if (savedSessionId) {
+                document.getElementById('session-input').value = savedSessionId;
+            }
+
+            // Load graph button handler
+            document.getElementById('load-graph-btn').addEventListener('click', () => {
+                const sessionId = document.getElementById('session-input').value.trim();
+                if (sessionId) {
+                    localStorage.setItem('yuhheardem_session_id', sessionId);
+                    loadGraph(sessionId);
+                }
+            });
+
+            // Click outside to hide details panel
+            document.addEventListener('click', (event) => {
+                const detailsPanel = document.getElementById('node-details');
+                const clickedElement = event.target;
+                const isNode = clickedElement.tagName === 'circle' || clickedElement.tagName === 'circle'.toLowerCase();
+
+                if (!isNode && !detailsPanel.contains(clickedElement)) {
+                    detailsPanel.classList.add('hidden');
+                }
+            });
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

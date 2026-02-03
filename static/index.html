@@ -10,13 +10,18 @@
 <body class="bg-gray-50 min-h-screen">
     <div id="app" class="container mx-auto px-4 py-8 max-w-4xl">
         <!-- Header -->
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">
-                YuhHearDem
-            </h1>
-            <p class="text-gray-600">
-                Barbados Parliamentary Knowledge Graph - Ask questions about parliamentary sessions, legislation, and more.
-            </p>
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">
+                    YuhHearDem
+                </h1>
+                <p class="text-gray-600">
+                    Barbados Parliamentary Knowledge Graph - Ask questions about parliamentary sessions, legislation, and more.
+                </p>
+            </div>
+            <a href="/graph.html" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                View Graph
+            </a>
         </header>
 
         <!-- Connection Status -->
@@ -50,13 +55,23 @@
                     >
                         Send
                     </button>
+                    <button
+                        type="button"
+                        id="clear-chat-btn"
+                        class="px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600"
+                    >
+                        Clear
+                    </button>
                 </form>
             </div>
         </div>
 
         <!-- Session Info -->
-        <div id="session-info" class="mt-4 p-3 bg-gray-100 rounded text-sm text-gray-600">
+        <div id="session-info" class="mt-4 p-3 bg-gray-100 rounded text-sm text-gray-600 flex justify-between items-center">
             <span>Session: <span id="session-id">Not connected</span></span>
+            <a href="/graph.html" class="text-blue-600 hover:underline">
+                View Knowledge Graph →
+            </a>
         </div>
     </div>
 
@@ -338,7 +353,24 @@
                         await sendQuery(query, true);
                     }
                 });
+
+                // Clear chat button handler
+                document.getElementById('clear-chat-btn').addEventListener('click', () => {
+                    if (confirm('Are you sure you want to clear the chat? This will remove all messages from the current session.')) {
+                        clearChat();
+                    }
+                });
             }
+        }
+
+        // Clear chat messages
+        function clearChat() {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = `
+                <div class="text-center text-gray-500 py-8">
+                    <p>Ask a question about Barbados Parliament to get started.</p>
+                </div>
+            `;
         }
 
         // Start application

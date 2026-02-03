@@ -1,15 +1,17 @@
 """Chat and query API endpoints"""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Set
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.session import Session
 from models.message import Message
+from models.entity import Entity
+from models.relationship import Relationship
 from api.schemas import (
     MessageCreate,
     MessageResponse,
@@ -372,4 +374,91 @@ async def archive_session(
     return {
         "status": "success",
         "message": "Session archived",
+    }
+
+
+@router.get("/session/{session_id}/graph", response_model=dict)
+async def get_session_graph(
+    session_id: str,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Get knowledge graph for a session's entities and relationships.
+
+    Args:
+        session_id: Session UUID string
+        db: Database session
+
+    Returns:
+        Nodes and edges for graph visualization
+    """
+    from sqlalchemy import func
+
+    result = await db.execute(select(Session).where(Session.session_id == session_id))
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Get all messages for this session
+    result = await db.execute(select(Message).where(Message.session_id == session.id))
+    messages = result.scalars().all()
+
+    # Extract entity IDs from message structured responses
+    entity_ids: Set[str] = set()
+    for message in messages:
+        if message.structured_response:
+            response = message.structured_response
+            if response.get("entities"):
+                for entity in response["entities"]:
+                    entity_ids.add(entity.get("entity_id"))
+
+    # Get entity details
+    nodes = []
+    if entity_ids:
+        result = await db.execute(
+            select(Entity).where(Entity.entity_id.in_(entity_ids))
+        )
+        entities = result.scalars().all()
+
+        nodes = [
+            {
+                "id": entity.entity_id,
+                "label": entity.name,
+                "type": entity.entity_type,
+                "metadata": {
+                    "description": entity.description,
+                    "importance_score": entity.importance_score,
+                },
+            }
+            for entity in entities
+        ]
+
+    # Get relationships between these entities
+    relationships = []
+    if entity_ids:
+        result = await db.execute(
+            select(Relationship).where(
+                or_(
+                    Relationship.source_id.in_(entity_ids),
+                    Relationship.target_id.in_(entity_ids),
+                )
+            )
+        )
+        rels = result.scalars().all()
+
+        relationships = [
+            {
+                "source": rel.source_id,
+                "target": rel.target_id,
+                "relation": rel.relation_type,
+                "sentiment": rel.sentiment,
+                "evidence": rel.evidence,
+            }
+            for rel in rels
+        ]
+
+    return {
+        "nodes": nodes,
+        "edges": relationships,
     }
