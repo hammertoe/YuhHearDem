@@ -103,7 +103,10 @@ class KnowledgeGraphStore:
 
         if video_id:
             from models.video import Video
-            query = query.join(Video, Mention.video_id == Video.id).where(Video.youtube_id == video_id)
+
+            query = query.join(Video, Mention.video_id == Video.id).where(
+                Video.youtube_id == video_id
+            )
         else:
             query = query.options(selectinload("video"))
 
@@ -129,9 +132,7 @@ class KnowledgeGraphStore:
         Returns:
             Entity details or None
         """
-        result = await db.execute(
-            select(Entity).where(Entity.entity_id == entity_id)
-        )
+        result = await db.execute(select(Entity).where(Entity.entity_id == entity_id))
         entity = result.scalar_one_or_none()
 
         if not entity:
