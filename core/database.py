@@ -1,6 +1,7 @@
 """Database connection and session management"""
 
 from collections.abc import AsyncGenerator
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -13,8 +14,8 @@ from app.config import get_settings
 
 Base = declarative_base()
 
-_engine: create_async_engine | None = None
-_async_session_maker: async_sessionmaker | None = None
+_engine = None
+_async_session_maker = None
 
 
 def get_engine():
