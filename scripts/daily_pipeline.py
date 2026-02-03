@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select, and_, or_
 
-from core.database import AsyncSessionLocal
+from app.dependencies import get_db_session
 from models.video import Video
 from models.order_paper import OrderPaper
 from services.video_paper_matcher import VideoPaperMatcher, TitlePatternMatcher
