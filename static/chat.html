@@ -256,39 +256,56 @@
 
                 removeTypingIndicator();
 
+                const handleEventBlock = (block) => {
+                    const lines = block.split('\n');
+                    let eventType = null;
+                    const dataLines = [];
+
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            eventType = line.slice(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            dataLines.push(line.slice(5).trim());
+                        }
+                    }
+
+                    if (!eventType) return;
+
+                    if (eventType === 'thinking') {
+                        return;
+                    }
+
+                    if (eventType === 'response') {
+                        const dataStr = dataLines.join('\n');
+                        if (!dataStr) return;
+
+                        try {
+                            const data = JSON.parse(dataStr);
+
+                            if (data.structured_response) {
+                                structuredResponse = data.structured_response;
+                            }
+
+                            const fallbackText = data.answer || data.message || '';
+                            addMessage('assistant', fallbackText, structuredResponse);
+                            messageCounter++;
+                        } catch (e) {
+                            console.error('Failed to parse response:', e, dataStr);
+                        }
+                    }
+                };
+
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
                     buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
+                    const events = buffer.split('\n\n');
+                    buffer = events.pop() || '';
 
-                    for (const line of lines) {
-                        if (line.startsWith('event: ')) {
-                            const eventType = line.slice(7).trim();
-
-                            if (eventType === 'thinking') {
-                                // Show thinking state (already handled by typing indicator)
-                            } else if (eventType === 'response') {
-                                try {
-                                    const data = JSON.parse(line.slice(6).trim());
-
-                                    if (data.structured_response) {
-                                        structuredResponse = data.structured_response;
-                                    }
-
-                                    // Remove previous assistant message if exists
-                                    const lastAssistantMsg = chatContainer.querySelector('.message-assistant:last-of-type');
-                                    if (lastAssistantMsg && messageCounter > 1) {
-                                        lastAssistantMsg.remove();
-                                    }
-
-                                    addMessage('assistant', '', structuredResponse);
-                                    messageCounter++;
-                                } catch (e) {
-                                    console.error('Failed to parse response:', e);
-                                }
-                            }
+                    for (const block of events) {
+                        if (block.trim()) {
+                            handleEventBlock(block);
                         }
                     }
                 }
