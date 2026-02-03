@@ -4,20 +4,31 @@
 import argparse
 import json
 import logging
-from datetime import datetime
+import sys
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from app.config import get_settings
+from app.dependencies import get_db_session
 from models.speaker import Speaker
 from models.video import Video as VideoModel
 from parsers.models import OrderPaper as ParsedOrderPaper
-from services.entity_extractor import EntityExtractor
+from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient
 from services.video_transcription import VideoTranscriptionService
 
+if TYPE_CHECKING:
+    from services.entity_extractor import EntityExtractor
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -29,12 +40,12 @@ class VideoIngestor:
         self,
         db_session: AsyncSession,
         gemini_client: GeminiClient,
-        entity_extractor: EntityExtractor | None = None,
+        entity_extractor: "EntityExtractor | None" = None,
     ):
         self.db = db_session
         self.client = gemini_client
         self.transcription_service = VideoTranscriptionService(gemini_client)
-        self.entity_extractor = entity_extractor or EntityExtractor()
+        self.entity_extractor = entity_extractor
 
     async def ingest_video(
         self,
@@ -66,8 +77,9 @@ class VideoIngestor:
         existing = await self.db.execute(
             select(VideoModel).where(VideoModel.youtube_id == youtube_id)
         )
-        if existing.scalar_one_or_none():
-            logger.info(f"Video already exists: {youtube_id}")
+        video = existing.scalar_one_or_none()
+        if video and video.transcript and video.transcript_processed_at:
+            logger.info(f"Video already exists with transcript: {youtube_id}")
             return {"status": "skipped", "reason": "already_exists"}
 
         try:
@@ -75,6 +87,7 @@ class VideoIngestor:
             speaker_id_mapping = await self._get_speaker_id_mapping()
 
             # Transcribe video
+            transcript: SessionTranscript
             if order_paper:
                 transcript = self.transcription_service.transcribe(
                     video_url=youtube_url,
@@ -101,32 +114,45 @@ class VideoIngestor:
                 response = self.client.analyze_video_with_transcript(
                     video_url=youtube_url,
                     prompt=prompt,
+                    response_schema=VideoTranscriptionService.TRANSCRIPT_SCHEMA,
                     fps=0.25,
                 )
 
                 transcript = self._parse_simple_response(response)
 
-            # Extract entities from transcript
-            entities = []
-            if transcript and hasattr(transcript, "agenda_items"):
-                for item in transcript.agenda_items:
-                    for speech in item.speech_blocks:
-                        text = " ".join([s.text for s in speech.sentences])
-                        entities.extend(self.entity_extractor.extract_entities(text))
+            transcript = cast(SessionTranscript, transcript)
+
+            entities_count = 0
+            if self.entity_extractor and hasattr(self.entity_extractor, "extract_from_transcript"):
+                try:
+                    extraction = self.entity_extractor.extract_from_transcript(transcript)
+                    entities_count = len(extraction.entities)
+                except Exception as exc:
+                    logger.warning(f"Entity extraction failed: {exc}")
 
             # Save to database
-            video = VideoModel(
-                youtube_id=youtube_id,
-                youtube_url=youtube_url,
-                title=transcript.session_title or f"Session {youtube_id}",
-                chamber=chamber,
-                session_date=session_date or datetime.utcnow(),
-                sitting_number=sitting_number,
-                transcript=transcript.model_dump() if hasattr(transcript, "model_dump") else {},
-                transcript_processed_at=datetime.utcnow(),
-            )
+            transcript_data = self._serialize_transcript(transcript)
+            if video is None:
+                video = VideoModel(
+                    youtube_id=youtube_id,
+                    youtube_url=youtube_url,
+                    title=transcript.session_title or f"Session {youtube_id}",
+                    chamber=chamber,
+                    session_date=session_date or datetime.utcnow(),
+                    sitting_number=sitting_number,
+                    transcript=transcript_data,
+                    transcript_processed_at=datetime.utcnow(),
+                )
+                self.db.add(video)
+            else:
+                video.youtube_url = youtube_url
+                video.title = transcript.session_title or video.title
+                video.chamber = chamber
+                video.session_date = session_date or video.session_date
+                video.sitting_number = sitting_number
+                video.transcript = transcript_data
+                video.transcript_processed_at = datetime.utcnow()
 
-            self.db.add(video)
             await self.db.commit()
             await self.db.refresh(video)
 
@@ -136,7 +162,7 @@ class VideoIngestor:
                 "status": "success",
                 "video_id": str(video.id),
                 "youtube_id": youtube_id,
-                "entities_count": len(entities),
+                "entities_count": entities_count,
             }
 
         except Exception as e:
@@ -213,7 +239,7 @@ class VideoIngestor:
             raise ValueError(f"Invalid YouTube URL: {url}")
         return match.group(1)
 
-    def _parse_simple_response(self, response: dict) -> object:
+    def _parse_simple_response(self, response: dict) -> SessionTranscript:
         """Parse Gemini response without order paper"""
         from parsers.transcript_models import SessionTranscript
 
@@ -225,6 +251,30 @@ class VideoIngestor:
             video_url=response.get("video_url"),
             video_title=response.get("video_title"),
         )
+
+    def _serialize_transcript(self, transcript: Any) -> dict[str, Any]:
+        """Serialize transcript payload into JSON-safe dict."""
+        payload = cast(Any, transcript)
+        model_dump = getattr(payload, "model_dump", None)
+        if callable(model_dump):
+            return cast(dict[str, Any], model_dump())
+        if is_dataclass(transcript) and not isinstance(transcript, type):
+            return cast(dict[str, Any], self._normalize_json(asdict(cast(Any, transcript))))
+        if isinstance(transcript, dict):
+            return cast(dict[str, Any], self._normalize_json(transcript))
+        return {}
+
+    def _normalize_json(self, payload: Any) -> Any:
+        """Normalize payload for JSON storage."""
+        if isinstance(payload, datetime):
+            return payload.isoformat()
+        if isinstance(payload, date):
+            return payload.isoformat()
+        if isinstance(payload, list):
+            return [self._normalize_json(item) for item in payload]
+        if isinstance(payload, dict):
+            return {key: self._normalize_json(value) for key, value in payload.items()}
+        return payload
 
 
 async def main():
@@ -262,16 +312,16 @@ async def main():
 
     settings = get_settings()
 
-    from google import genai
-
     from app.dependencies import get_db_session
 
-    genai.configure(api_key=settings.google_api_key)
-    client = GeminiClient()
-    extractor = EntityExtractor()
+    client = GeminiClient(
+        api_key=settings.google_api_key,
+        model=settings.gemini_model,
+        temperature=settings.gemini_temperature,
+    )
 
-    async with get_db_session() as db:
-        ingestor = VideoIngestor(db, client, extractor)
+    async with _db_session() as db:
+        ingestor = VideoIngestor(db, client, entity_extractor=None)
 
         if args.mapping:
             results = await ingestor.ingest_from_file(args.mapping)
@@ -285,6 +335,12 @@ async def main():
             print(f"  Skipped: {skipped}")
             print(f"  Failed: {failed}")
         elif args.url:
+            order_paper = None
+            if args.order_paper:
+                from parsers.order_paper_parser import OrderPaperParser
+
+                parser = OrderPaperParser(client)
+                order_paper = parser.parse(args.order_paper)
             result = await ingestor.ingest_video(
                 youtube_url=args.url,
                 chamber=args.chamber,
@@ -292,10 +348,18 @@ async def main():
                 if args.session_date
                 else None,
                 sitting_number=args.sitting_number,
+                order_paper=order_paper,
             )
             print(result)
         else:
             parser.print_help()
+
+
+@asynccontextmanager
+async def _db_session() -> AsyncIterator[AsyncSession]:
+    """Provide an async session from the app dependency."""
+    async for session in get_db_session():
+        yield session
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 """Video transcription service using Gemini"""
 
+from datetime import datetime
+from typing import cast
+
 from parsers.models import OrderPaper
 from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient
@@ -8,6 +11,51 @@ from services.speaker_matcher import SpeakerMatcher
 
 class VideoTranscriptionService:
     """Service for transcribing parliamentary session videos."""
+
+    TRANSCRIPT_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "session_title": {"type": "string"},
+            "date": {"type": "string"},
+            "chamber": {"type": "string"},
+            "video_url": {"type": "string"},
+            "video_title": {"type": "string"},
+            "agenda_items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "topic_title": {"type": "string"},
+                        "bill_id": {"type": "string"},
+                        "speech_blocks": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "speaker_name": {"type": "string"},
+                                    "speaker_id": {"type": "string"},
+                                    "sentences": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "start_time": {"type": "string"},
+                                                "text": {"type": "string"},
+                                            },
+                                            "required": ["start_time", "text"],
+                                        },
+                                    },
+                                },
+                                "required": ["speaker_name", "sentences"],
+                            },
+                        },
+                    },
+                    "required": ["topic_title", "speech_blocks"],
+                },
+            },
+        },
+        "required": ["session_title", "agenda_items"],
+    }
 
     def __init__(self, gemini_client: GeminiClient):
         """Initialize service with Gemini client."""
@@ -38,6 +86,7 @@ class VideoTranscriptionService:
         response = self.client.analyze_video_with_transcript(
             video_url=video_url,
             prompt=prompt,
+            response_schema=self.TRANSCRIPT_SCHEMA,
             fps=fps,
         )
 
@@ -84,14 +133,47 @@ TRANSCRIPTION INSTRUCTIONS:
 3. Timestamp format: XmYsZms (e.g., 0m5s250ms)
 4. Preserve parliamentary language and formal tone"""
 
-    def _parse_response(self, response: dict) -> SessionTranscript:
+    def _parse_response(self, response: dict[str, object]) -> SessionTranscript:
         """Parse Gemini response into SessionTranscript."""
         # Simplified parsing - in production would handle all cases
+        date_value = response.get("date")
+        parsed_date: datetime = datetime.utcnow()
+        if isinstance(date_value, str):
+            try:
+                parsed_date = datetime.fromisoformat(date_value)
+            except ValueError:
+                parsed_date = datetime.utcnow()
+
+        session_title = response.get("session_title")
+        if not isinstance(session_title, str):
+            session_title = ""
+        session_title = cast(str, session_title)
+
+        chamber = response.get("chamber")
+        if not isinstance(chamber, str):
+            chamber = "house"
+        chamber = cast(str, chamber)
+
+        agenda_items = response.get("agenda_items")
+        if not isinstance(agenda_items, list):
+            agenda_items = []
+        agenda_items = cast(list, agenda_items)
+
+        video_url = response.get("video_url")
+        if not isinstance(video_url, str):
+            video_url = None
+        video_url = cast(str | None, video_url)
+
+        video_title = response.get("video_title")
+        if not isinstance(video_title, str):
+            video_title = None
+        video_title = cast(str | None, video_title)
+
         return SessionTranscript(
-            session_title=response.get("session_title", ""),
-            date=response.get("date"),
-            chamber=response.get("chamber", "house"),
-            agenda_items=response.get("agenda_items", []),
-            video_url=response.get("video_url"),
-            video_title=response.get("video_title"),
+            session_title=session_title,
+            date=parsed_date,
+            chamber=chamber,
+            agenda_items=agenda_items,
+            video_url=video_url,
+            video_title=video_title,
         )

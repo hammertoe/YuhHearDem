@@ -62,8 +62,10 @@ class OrderPaperIngestor:
             existing = await db.execute(
                 select(OrderPaperModel).where(OrderPaperModel.pdf_hash == pdf_hash)
             )
-            if existing.scalar_one_or_none():
+            existing_record = existing.scalar_one_or_none()
+            if existing_record:
                 logger.info(f"Already ingested: {pdf_path.name}")
+                await self._sync_speakers_from_record(db, existing_record)
                 return {"status": "skipped", "reason": "already_exists"}
 
             # Parse PDF
@@ -171,14 +173,35 @@ class OrderPaperIngestor:
 
             if not speaker:
                 speaker = Speaker(
+                    canonical_id=matcher.normalize_name(speaker_data.name),
                     name=speaker_data.name,
                     title=speaker_data.title,
                     role=speaker_data.role,
-                    canonical_name=matcher.normalize_name(speaker_data.name),
+                    aliases=[],
+                    meta_data={},
                 )
                 db.add(speaker)
 
         await db.commit()
+
+    async def _sync_speakers_from_record(self, db: AsyncSession, record: OrderPaperModel):
+        """Sync speakers from an existing order paper record"""
+        if not record.speakers:
+            return
+
+        from types import SimpleNamespace
+
+        speakers = [
+            SimpleNamespace(
+                name=s.get("name"),
+                title=s.get("title"),
+                role=s.get("role"),
+            )
+            for s in record.speakers
+            if s.get("name")
+        ]
+
+        await self._sync_speakers(db, speakers)
 
     def _calculate_hash(self, file_path: Path) -> str:
         """Calculate SHA256 hash of file"""

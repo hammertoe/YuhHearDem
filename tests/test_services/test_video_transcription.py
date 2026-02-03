@@ -54,3 +54,33 @@ class TestVideoTranscriptionService:
         assert transcript.session_title == "Test Session"
         assert transcript.chamber == "senate"
         assert transcript.video_url == "https://example.com"
+
+    def test_transcribe_passes_response_schema(self):
+        """Transcribe should request structured JSON output."""
+        mock_client = Mock()
+        mock_client.analyze_video_with_transcript = Mock(
+            return_value={
+                "session_title": "Test Session",
+                "date": "2024-01-01",
+                "chamber": "house",
+                "agenda_items": [],
+            }
+        )
+        service = VideoTranscriptionService(mock_client)
+
+        order_paper = OrderPaper(
+            session_title="Test Session",
+            session_date="2024-01-01",
+            speakers=[],
+            agenda_items=[],
+        )
+
+        service.transcribe(
+            video_url="https://example.com",
+            order_paper=order_paper,
+            speaker_id_mapping={},
+        )
+
+        _, kwargs = mock_client.analyze_video_with_transcript.call_args
+
+        assert kwargs["response_schema"] == service.TRANSCRIPT_SCHEMA

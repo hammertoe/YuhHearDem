@@ -36,6 +36,8 @@ async def db_engine():
     )
 
     async with engine.begin() as conn:
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
@@ -72,22 +74,11 @@ async def db_session(db_session_maker):
 
 
 @pytest.fixture(scope="function")
-def override_get_db():
+def override_get_db(db_engine):
     """Override get_db dependency for testing"""
 
     async def _get_test_db():
-        engine = create_async_engine(
-            TEST_DATABASE_URL,
-            poolclass=NullPool,
-            echo=False,
-        )
-        from sqlalchemy import text
-
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
-        session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        session_maker = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 
         async with session_maker() as session:
             try:
@@ -98,7 +89,6 @@ def override_get_db():
                 raise
             finally:
                 await session.close()
-                await engine.dispose()
 
     return _get_test_db
 
@@ -110,9 +100,9 @@ async def client(override_get_db):
     from httpx import ASGITransport, AsyncClient
 
     from app.main import app
-    from core.database import get_db
+    from app.dependencies import get_db_session
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db_session] = override_get_db
 
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
