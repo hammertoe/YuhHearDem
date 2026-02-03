@@ -7,13 +7,15 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 
+import sys
+
 try:
     import requests
     from bs4 import BeautifulSoup
-except ImportError:
-    print("Error: requests and beautifulsoup4 not installed.")
-    print("Install with: pip install requests beautifulsoup4")
-    exit(1)
+except ImportError as e:
+    sys.stderr.write("Error: requests and beautifulsoup4 not installed.\n")
+    sys.stderr.write("Install with: pip install requests beautifulsoup4\n")
+    sys.exit(1)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -47,63 +49,95 @@ class SessionPaperScraper:
         logger.info(f"Scraping {chamber} session papers...")
 
         papers = []
+        offset = 0
+        papers_per_page = 20
 
-        # Actual URLs for Barbados Parliament website
+        # URLs for Barbados Parliament website
         if chamber == "house":
             url = f"{self.base_url}/order_papers/search/type/1"
         else:
             url = f"{self.base_url}/order_papers/search/type/2"
 
-        try:
-            response = self.session.get(url, timeout=30)
-            response.raise_for_status()
+        while True:
+            try:
+                # Use POST request with offset for pagination
+                data = {
+                    "COL_ID": "-1",
+                    "ORD_ID": "0",
+                    "OFF_SET": str(offset),
+                }
 
-            soup = BeautifulSoup(response.text, "html.parser")
+                response = self.session.post(url, data=data, timeout=30)
+                response.raise_for_status()
 
-            # Find table rows with order papers
-            table = soup.find("table", class_="table-hover")
-            if not table:
-                logger.warning("No table found on page")
-                return []
+                soup = BeautifulSoup(response.text, "html.parser")
 
-            rows = table.find_all("tr")[1:]  # Skip header row
-
-            for i, row in enumerate(rows, 1):
-                if max_papers and i > max_papers:
+                # Find table rows with order papers
+                table = soup.find("table", class_="table-hover")
+                if not table:
+                    logger.warning("No table found on page")
                     break
 
-                # Extract data from table cells
-                cells = row.find_all("td")
-                if len(cells) < 2:
-                    continue
+                rows = table.find_all("tr")[1:]  # Skip header row
 
-                # First cell: PDF link and title
-                title_cell = cells[0]
-                pdf_link = title_cell.find("a", href=True)
-                if not pdf_link:
-                    continue
+                if not rows:
+                    logger.info("No more papers found on this page")
+                    break
 
-                pdf_url = pdf_link.get("href")
-                title = pdf_link.get_text(strip=True) or f"Session Paper {i}"
+                for row in rows:
+                    if max_papers and len(papers) >= max_papers:
+                        break
 
-                # Second cell: posted date
-                date_text = cells[1].get_text(strip=True)
-                session_date = self._parse_date(date_text)
+                    # Extract data from table cells
+                    cells = row.find_all("td")
+                    if len(cells) < 2:
+                        continue
 
-                logger.info(f"Found: {title} - {pdf_url}")
+                    # First cell: PDF link and title
+                    title_cell = cells[0]
+                    pdf_link = title_cell.find("a", href=True)
+                    if not pdf_link:
+                        continue
 
-                papers.append(
-                    {
-                        "chamber": chamber,
-                        "title": title,
-                        "pdf_url": pdf_url,
-                        "session_date": session_date,
-                    }
+                    pdf_url = pdf_link.get("href", "")
+                    if isinstance(pdf_url, str) and pdf_url and not pdf_url.startswith("http"):
+                        pdf_url = f"{self.base_url}{pdf_url}"
+
+                    title = pdf_link.get_text(strip=True) or f"Session Paper {len(papers) + 1}"
+
+                    # Second cell: posted date
+                    date_text = cells[1].get_text(strip=True)
+                    session_date = self._parse_date(date_text)
+
+                    papers.append(
+                        {
+                            "chamber": chamber,
+                            "title": title,
+                            "pdf_url": pdf_url,
+                            "session_date": session_date,
+                        }
+                    )
+
+                logger.info(
+                    f"Page offset {offset}: Found {len(rows)} papers (total: {len(papers)})"
                 )
 
-        except requests.RequestException as e:
-            logger.error(f"Failed to scrape session papers: {e}")
+                # Check if we should continue to next page
+                if max_papers and len(papers) >= max_papers:
+                    break
 
+                if len(rows) == 0:
+                    # No more papers on this page - we're done
+                    break
+
+                # Move to next page (continue even if less than 20, as that's normal for any page)
+                offset += papers_per_page
+
+            except requests.RequestException as e:
+                logger.error(f"Failed to scrape session papers at offset {offset}: {e}")
+                break
+
+        logger.info(f"Total papers scraped: {len(papers)}")
         return papers
 
     def download_paper(self, pdf_url: str, output_path: Path) -> bool:
@@ -228,13 +262,13 @@ def main():
     scraper = SessionPaperScraper()
     papers = scraper.scrape_session_papers(args.chamber, args.max)
 
-    print(f"\nFound {len(papers)} session papers:")
+    logger.info(f"Found {len(papers)} session papers")
     for paper in papers:
-        print(f"  - {paper['title']}")
+        logger.info(f"  - {paper['title']}")
 
     if args.download:
         downloaded = scraper.download_all_papers(papers, args.output)
-        print(f"\nDownloaded {len(downloaded)} papers to {args.output}")
+        logger.info(f"Downloaded {len(downloaded)} papers to {args.output}")
 
 
 if __name__ == "__main__":
