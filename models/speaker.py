@@ -25,11 +25,11 @@ class Speaker(Base):
     title: Mapped[Optional[str]] = mapped_column(String(100))
     role: Mapped[Optional[str]] = mapped_column(String(100))
     chamber: Mapped[Optional[str]] = mapped_column(String(50))
-    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    aliases: Mapped[list] = mapped_column(JSON, default=lambda: [])
     pronoun: Mapped[Optional[str]] = mapped_column(String(10))
     gender: Mapped[Optional[str]] = mapped_column(String(20))
     first_seen_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

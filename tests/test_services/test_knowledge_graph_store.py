@@ -21,7 +21,9 @@ class TestKnowledgeGraphStore:
         store = KnowledgeGraphStore()
 
         entity_id = "test-entity"
-        entity = Entity(entity_id=entity_id, name="Test Entity", entity_type="organization")
+        entity = Entity(
+            entity_id=entity_id, name="Test Entity", entity_type="organization"
+        )
 
         result = await store.find_entity(mock_db, entity_id)
 
@@ -38,7 +40,9 @@ class TestKnowledgeGraphStore:
         store = KnowledgeGraphStore()
 
         entity_id = "test-entity"
-        entity = Entity(entity_id=entity_id, name="Test Entity", entity_type="organization")
+        entity = Entity(
+            entity_id=entity_id, name="Test Entity", entity_type="organization"
+        )
 
         result = await store.find_entity(mock_db, entity_id)
 
@@ -55,7 +59,9 @@ class TestKnowledgeGraphStore:
         store = KnowledgeGraphStore()
 
         entity_id = "test-entity"
-        entity = Entity(entity_id=entity_id, name="Test Entity", entity_type="organization")
+        entity = Entity(
+            entity_id=entity_id, name="Test Entity", entity_type="organization"
+        )
 
         result = await store.get_relationships(mock_db, entity_id)
 
@@ -72,7 +78,9 @@ class TestKnowledgeGraphStore:
         store = KnowledgeGraphStore()
 
         entity_id = "test-entity"
-        entity = Entity(entity_id=entity_id, name="Test Entity", entity_type="organization")
+        entity = Entity(
+            entity_id=entity_id, name="Test Entity", entity_type="organization"
+        )
 
         result = await store.get_mentions(mock_db, entity_id)
 
@@ -90,9 +98,7 @@ class TestKnowledgeGraphStore:
 
         date_from = "2024-01-01"
         date_to = "2024-01-31"
-        result = await store.search_by_date_range(
-            mock_db, date_from, date_to
-        )
+        result = await store.search_by_date_range(mock_db, date_from, date_to)
 
         assert result["total"] == 1
         mock_db.execute.assert_awaited_with(
@@ -124,5 +130,7 @@ class TestKnowledgeGraphStore:
 
         assert result["total"] == 1
         mock_db.execute.assert_q_awaited_with(
-            select(text).order_by(VectorEmbedding.embedding.cosine_similarity(query_text), 0.7).limit(10)
+            select(text)
+            .order_by(VectorEmbedding.embedding.cosine_similarity(query_text), 0.7)
+            .limit(10)
         )

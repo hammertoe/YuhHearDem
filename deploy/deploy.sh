@@ -122,7 +122,7 @@ smoke_test() {
 
 switch_nginx() {
     local target_port=$1
-    local nginx_conf="/etc/nginx/sites-available/yuhheardem.com"
+    local nginx_conf="/etc/nginx/sites-available/beta.yuhheardem.com"
 
     log_info "Switching nginx upstream to port $target_port..."
 

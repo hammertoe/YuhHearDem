@@ -1,24 +1,35 @@
 """Chat and query API endpoints"""
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.session import Session
 from models.message import Message
-from api.schemas import MessageCreate, MessageResponse
-from app.dependencies import get_db_session
+from api.schemas import (
+    MessageCreate,
+    MessageResponse,
+    QueryRequest,
+    StructuredResponse,
+    ResponseCard,
+    QueryResponse,
+)
+from app.dependencies import get_db_session, get_parliamentary_agent
+from services.parliamentary_agent import ParliamentaryAgent
 
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 
 
-@router.post("/query", response_model=dict)
+@router.post("/query", response_model=QueryResponse)
 async def process_query(
     query_request: dict,
     db: AsyncSession = Depends(get_db_session),
+    agent: ParliamentaryAgent = Depends(get_parliamentary_agent),
 ):
     """
     Process a natural language query and return structured response.
@@ -26,6 +37,7 @@ async def process_query(
     Args:
         query_request: Query data with 'query', 'user_id', 'session_id'
         db: Database session
+        agent: Parliamentary agent for RAG
 
     Returns:
         Structured response with session info
@@ -40,9 +52,6 @@ async def process_query(
     if not query:
         raise HTTPException(status_code=400, detail="Query is required")
 
-    from sqlalchemy import select
-    from models.session import Session
-
     session = None
 
     if session_id:
@@ -51,8 +60,10 @@ async def process_query(
         )
         session = result.scalar_one_or_none()
     else:
+        import uuid
+
         session = Session(
-            session_id=f"session_{user_id[:8]}",
+            session_id=f"session_{str(uuid.uuid4())[:8]}",
             user_id=user_id,
         )
         db.add(session)
@@ -67,47 +78,68 @@ async def process_query(
     db.add(user_message)
     await db.commit()
 
-    await db.execute(select(Session).where(Session.id == session.id))
     session.last_updated = datetime.utcnow()
     await db.commit()
 
-    assistant_response = {
-        "intro_message": "I'm analyzing the parliamentary records to answer your question. This feature is being enhanced.",
-        "response_cards": [
-            {
-                "summary": "Search functionality available",
-                "details": f"You asked: '{query}'. The system is currently being enhanced to provide detailed parliamentary information with source citations. This will include entity extraction, relationships, and semantic search capabilities.",
-            }
-        ],
-        "follow_up_suggestions": [
-            "What legislation has been discussed recently?",
-            "Who spoke about this topic?",
-            "Show me recent sessions from the Senate",
-        ],
-    }
+    agent_response = await agent.query(db=db, user_query=query)
+
+    if agent_response.get("success"):
+        answer = agent_response.get("answer", "")
+
+        assistant_response = StructuredResponse(
+            intro_message="Based on my analysis of the parliamentary records:",
+            response_cards=[
+                ResponseCard(
+                    summary="Analysis Complete",
+                    details=answer,
+                )
+            ],
+            follow_up_suggestions=[
+                "Tell me more about this entity",
+                "What legislation is related?",
+                "Show me all mentions",
+            ],
+        )
+    else:
+        assistant_response = StructuredResponse(
+            intro_message="I encountered an issue while processing your query:",
+            response_cards=[
+                ResponseCard(
+                    summary="Error",
+                    details=agent_response.get("error", "Unknown error"),
+                )
+            ],
+            follow_up_suggestions=[
+                "Try rephrasing your question",
+                "Search for a specific topic",
+                "Browse recent sessions",
+            ],
+        )
 
     assistant_message = Message(
         session_id=session.id,
         role="assistant",
         content="",
-        structured_response=assistant_response,
+        structured_response=assistant_response.model_dump(),
     )
     db.add(assistant_message)
     await db.commit()
+    await db.refresh(assistant_message)
 
-    return {
-        "session_id": session.session_id,
-        "user_id": user_id,
-        "message_id": str(assistant_message.id),
-        "status": "success",
-        "structured_response": assistant_response,
-    }
+    return QueryResponse(
+        session_id=session.session_id,
+        user_id=user_id,
+        message_id=str(assistant_message.id),
+        status="success",
+        structured_response=assistant_response,
+    )
 
 
 @router.post("/query/stream", response_class=StreamingResponse)
 async def process_query_stream(
     query_request: dict,
     db: AsyncSession = Depends(get_db_session),
+    agent: ParliamentaryAgent = Depends(get_parliamentary_agent),
 ):
     """
     Process a natural language query with streaming response.
@@ -115,6 +147,7 @@ async def process_query_stream(
     Args:
         query_request: Query data with 'query', 'user_id', 'session_id'
         db: Database session
+        agent: Parliamentary agent for RAG
 
     Returns:
         Server-Sent Events stream
@@ -129,9 +162,6 @@ async def process_query_stream(
     if not query:
         raise HTTPException(status_code=400, detail="Query is required")
 
-    from sqlalchemy import select
-    from models.session import Session
-
     session = None
 
     if session_id:
@@ -140,8 +170,10 @@ async def process_query_stream(
         )
         session = result.scalar_one_or_none()
     else:
+        import uuid
+
         session = Session(
-            session_id=f"session_{user_id[:8]}",
+            session_id=f"session_{str(uuid.uuid4())[:8]}",
             user_id=user_id,
         )
         db.add(session)
@@ -156,35 +188,59 @@ async def process_query_stream(
     db.add(user_message)
     await db.commit()
 
-    await db.execute(select(Session).where(Session.id == session.id))
     session.last_updated = datetime.utcnow()
     await db.commit()
 
     async def event_generator():
-        yield f"event: thinking\n"
         import json
 
-        assistant_response = {
-            "intro_message": "I'm analyzing the parliamentary records to answer your question.",
-            "response_cards": [
-                {
-                    "summary": "Search functionality available",
-                    "details": f"You asked: '{query}'. The system is being enhanced with entity extraction and semantic search capabilities.",
-                }
-            ],
-            "follow_up_suggestions": [
-                "What legislation has been discussed recently?",
-                "Show me recent sessions from the Senate",
-            ],
-        }
+        yield f"event: thinking\n"
+        yield f"data: {json.dumps({'status': 'thinking'})}\n\n"
+
+        agent_response = await agent.query(db=db, user_query=query)
+
+        if agent_response.get("success"):
+            answer = agent_response.get("answer", "")
+
+            assistant_response = StructuredResponse(
+                intro_message="Based on my analysis of the parliamentary records:",
+                response_cards=[
+                    ResponseCard(
+                        summary="Analysis Complete",
+                        details=answer,
+                    )
+                ],
+                follow_up_suggestions=[
+                    "Tell me more about this entity",
+                    "What legislation is related?",
+                    "Show me all mentions",
+                ],
+            )
+        else:
+            assistant_response = StructuredResponse(
+                intro_message="I encountered an issue while processing your query:",
+                response_cards=[
+                    ResponseCard(
+                        summary="Error",
+                        details=agent_response.get("error", "Unknown error"),
+                    )
+                ],
+                follow_up_suggestions=[
+                    "Try rephrasing your question",
+                    "Search for a specific topic",
+                    "Browse recent sessions",
+                ],
+            )
+
         assistant_message = Message(
             session_id=session.id,
             role="assistant",
             content="",
-            structured_response=assistant_response,
+            structured_response=assistant_response.model_dump(),
         )
         db.add(assistant_message)
         await db.commit()
+        await db.refresh(assistant_message)
 
         response_json = json.dumps(
             {
@@ -192,7 +248,7 @@ async def process_query_stream(
                 "user_id": user_id,
                 "message_id": str(assistant_message.id),
                 "status": "success",
-                "structured_response": assistant_response,
+                "structured_response": assistant_response.model_dump(),
             }
         )
         yield f"event: response\n"
@@ -218,6 +274,7 @@ async def get_session(
 
     Args:
         session_id: Session UUID string
+        db: Database session
 
     Returns:
         Session information
@@ -227,9 +284,6 @@ async def get_session(
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    from sqlalchemy import select, func
-    from models.message import Message
 
     result = await db.execute(select(Message).where(Message.session_id == session.id))
     messages = result.scalars().all()
@@ -256,14 +310,11 @@ async def get_session_messages(
 
     Args:
         session_id: Session UUID string
+        db: Database session
 
     Returns:
         List of messages
     """
-    from sqlalchemy import select
-    from models.session import Session
-    from models.message import Message
-
     result = await db.execute(select(Session).where(Session.session_id == session_id))
     session = result.scalar_one_or_none()
 
@@ -301,13 +352,11 @@ async def archive_session(
 
     Args:
         session_id: Session UUID string
+        db: Database session
 
     Returns:
         Success message
     """
-    from sqlalchemy import select, update
-    from models.session import Session
-
     result = await db.execute(select(Session).where(Session.session_id == session_id))
     session = result.scalar_one_or_none()
 
