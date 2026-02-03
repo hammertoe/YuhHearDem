@@ -50,8 +50,8 @@ class ParliamentaryAgent:
             prompt = self._build_agent_prompt(user_query, context, iteration, max_iterations)
             tools_dict = self.tools.get_tools_dict()
 
-            response = await self.client.client.models.generate_content(
-                model="gemini-2-flash-preview",
+            response = await self.client.client.aio.models.generate_content(
+                model="gemini-3-flash-preview",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     tools=[
@@ -62,6 +62,8 @@ class ParliamentaryAgent:
             )
 
             response_text = response.text
+            if response_text is None:
+                response_text = ""
 
             result = self._parse_agent_response(response_text, user_query)
 
