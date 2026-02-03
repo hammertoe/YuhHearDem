@@ -3,14 +3,14 @@
 import asyncio
 import os
 import pytest
-import tempfile
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
-# Test database URL (using sqlite file for tests)
-# Using a file instead of :memory: to allow shared database access
-TEST_DATABASE_URL = "sqlite+aiosqlite:///"
+# Test database URL (using PostgreSQL with pgvector)
+TEST_DATABASE_URL = (
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
+)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -30,13 +30,12 @@ from app.config import get_settings
 @pytest.fixture(scope="function")
 async def db_engine():
     """Create test database engine"""
-    db_file = tempfile.NamedTemporaryFile(delete=False, suffix=".db").name
-    test_db_url = f"sqlite+aiosqlite:///{db_file}"
+    from sqlalchemy import text
 
     engine = create_async_engine(
-        test_db_url,
-        connect_args={"check_same_thread": False},
+        TEST_DATABASE_URL,
         poolclass=NullPool,
+        echo=False,
     )
 
     async with engine.begin() as conn:
@@ -45,7 +44,8 @@ async def db_engine():
     yield engine
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.run_sync(Base.metadata.create_all)
 
     await engine.dispose()
 
@@ -102,3 +102,19 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def verify_postgres():
+    """Verify PostgreSQL is running before tests"""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine("postgresql://postgres:postgres@localhost:5432/postgres")
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        pytest.skip(f"PostgreSQL not available: {e}. Run 'docker-compose up' first.")
+    finally:
+        engine.dispose()
