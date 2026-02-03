@@ -1,55 +1,12 @@
 """Entity extraction service using Gemini API."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
+from typing import Any
 
-from models.entity import Entity, EntityType, Mention, Relationship, RelationType, Sentiment
+from models.entity import Entity
+from models.relationship import Relationship
 from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient
-
-# Gemini structured output schema for entity extraction (combined - legacy)
-ENTITY_EXTRACTION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "entities": {
-            "type": "array",
-            "description": "Extracted entities from the transcript",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "entity_id": {"type": "string"},
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["person", "organization", "place", "law", "concept", "event"],
-                    },
-                    "name": {"type": "string"},
-                    "canonical_name": {"type": "string"},
-                    "aliases": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["entity_id", "entity_type", "name", "canonical_name"],
-            },
-        },
-        "relationships": {
-            "type": "array",
-            "description": "Relationships between entities",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "source_id": {"type": "string"},
-                    "target_id": {"type": "string"},
-                    "relation_type": {
-                        "type": "string",
-                        "enum": ["mentions", "supports", "opposes", "relates_to", "references"],
-                    },
-                    "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},
-                    "evidence": {"type": "string"},
-                },
-                "required": ["source_id", "target_id", "relation_type", "sentiment", "evidence"],
-            },
-        },
-    },
-    "required": ["entities", "relationships"],
-}
-
 
 # Two-pass extraction schemas (optimized for quality)
 ENTITY_ONLY_SCHEMA = {
@@ -67,8 +24,25 @@ ENTITY_ONLY_SCHEMA = {
                     },
                     "entity_type": {
                         "type": "string",
-                        "enum": ["person", "organization", "place", "law", "concept", "event"],
+                        "enum": [
+                            "person",
+                            "organization",
+                            "place",
+                            "law",
+                            "concept",
+                            "event",
+                            "agenda_item",
+                            "procedural_step",
+                            "schedule_item",
+                            "numeric_fact",
+                            "policy_position",
+                            "funding_status",
+                        ],
                         "description": "Category of entity",
+                    },
+                    "entity_subtype": {
+                        "type": "string",
+                        "description": "Optional subtype (e.g., bill, act, mp, minister)",
                     },
                     "name": {"type": "string", "description": "Primary name as mentioned in text"},
                     "canonical_name": {
@@ -89,6 +63,31 @@ ENTITY_ONLY_SCHEMA = {
                         "minimum": 0,
                         "maximum": 1,
                         "description": "Salience score (0-1) indicating prominence in discussion",
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Confidence score (0-1) for this entity",
+                    },
+                    "evidence": {
+                        "type": "array",
+                        "description": "Evidence quotes supporting this entity",
+                        "items": {"type": "string"},
+                    },
+                    "attributes": {
+                        "type": "object",
+                        "description": "Structured attributes for facts or schedules",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "date": {"type": "string"},
+                            "time": {"type": "string"},
+                            "amount": {"type": "string"},
+                            "unit": {"type": "string"},
+                            "subject": {"type": "string"},
+                            "predicate": {"type": "string"},
+                            "object": {"type": "string"},
+                        },
                     },
                 },
                 "required": ["entity_id", "entity_type", "name", "canonical_name"],
@@ -118,7 +117,30 @@ RELATIONSHIP_ONLY_SCHEMA = {
                     },
                     "relation_type": {
                         "type": "string",
-                        "enum": ["mentions", "supports", "opposes", "relates_to", "references"],
+                        "enum": [
+                            "mentions",
+                            "supports",
+                            "opposes",
+                            "relates_to",
+                            "references",
+                            "introduces",
+                            "sponsors",
+                            "questions",
+                            "answers",
+                            "rebuts",
+                            "amends",
+                            "chairs",
+                            "reports_on",
+                            "speaks_on",
+                            "about",
+                            "funds",
+                            "allocates",
+                            "sets_deadline",
+                            "corrects",
+                            "updates",
+                            "prioritizes",
+                            "states",
+                        ],
                         "description": "Type of relationship",
                     },
                     "sentiment": {
@@ -162,20 +184,18 @@ class EntityExtractor:
     proper relationships, sentiment analysis, and evidence citations.
     """
 
-    def __init__(self, thinking_budget: int | None = None):
+    def __init__(self, api_key: str | None = None, thinking_budget: int | None = None):
         """
         Initialize the entity extractor with Gemini client.
 
         Args:
+            api_key: Optional Gemini API key (defaults to env)
             thinking_budget: Thinking budget for Gemini (0=no thinking, -1=model controls, None=default)
         """
-        self.gemini_client = GeminiClient(thinking_budget=thinking_budget)
+        self.gemini_client = GeminiClient(api_key=api_key, thinking_budget=thinking_budget)
 
-    # Chunking configuration
-    MAX_TRANSCRIPT_SIZE_KB = 100  # Process in chunks if larger than this (legacy)
-    MAX_TWO_PASS_SIZE_KB = (
-        3500  # Maximum size for two-pass (Gemini ~3.8 MB limit with safety margin)
-    )
+    # Extraction configuration
+    MAX_TWO_PASS_SIZE_KB = 3500  # Gemini ~3.8 MB limit with safety margin
 
     def extract_from_transcript(
         self,
@@ -187,7 +207,7 @@ class EntityExtractor:
         Extract entities and relationships from a transcript.
 
         By default uses two-pass approach for better quality. Falls back to
-        chunking for extremely large transcripts (>3.5 MB).
+        agenda-item chunking for extremely large transcripts (>3.5 MB).
 
         Args:
             transcript: Session transcript to analyze
@@ -200,13 +220,11 @@ class EntityExtractor:
         import json
 
         # Check transcript size
-        transcript_json = json.dumps(transcript.to_dict(), indent=2)
+        transcript_json = json.dumps(self._serialize_transcript(transcript), indent=2)
         transcript_size_kb = len(transcript_json) / 1024
 
         # Determine method
         if method == "auto":
-            # Use two-pass for all transcripts under 3.5 MB (safety margin)
-            # Fall back to chunking for extremely large transcripts
             if transcript_size_kb > self.MAX_TWO_PASS_SIZE_KB:
                 print(
                     f"   📦 Very large transcript ({transcript_size_kb:.1f} KB) - using chunked extraction..."
@@ -218,93 +236,25 @@ class EntityExtractor:
                 )
                 method = "two-pass"
 
-        # Execute based on method
         if method == "two-pass":
             return self._extract_two_pass(transcript, seed_entities)
-        elif method == "chunked":
-            # For chunked mode, check if we need to chunk by agenda items
-            if (
-                transcript_size_kb > self.MAX_TRANSCRIPT_SIZE_KB
-                and len(transcript.agenda_items) > 1
-            ):
-                print(f"   📦 Processing {len(transcript.agenda_items)} agenda items separately...")
-                return self._extract_chunked(transcript, seed_entities)
-            else:
-                return self._extract_single(transcript, seed_entities)
-        else:
-            raise ValueError(
-                f"Unknown extraction method: {method}. Use 'auto', 'two-pass', or 'chunked'."
-            )
-
-    def _extract_single(
-        self, transcript: SessionTranscript, seed_entities: list[dict] | None = None
-    ) -> ExtractionResult:
-        """
-        Extract entities from a single transcript chunk (legacy chunked mode).
-
-        Checks if the chunk is still too large for processing. If it has a single
-        oversized agenda item with multiple speech blocks, delegates to nested
-        speech block chunking.
-
-        Args:
-            transcript: Session transcript to analyze
-            seed_entities: Optional spaCy-detected entities for context
-
-        Returns:
-            ExtractionResult with extracted entities and relationships
-        """
-        import json
-
-        # Check if this chunk is still too large
-        transcript_json = json.dumps(transcript.to_dict(), indent=2)
-        transcript_size_kb = len(transcript_json) / 1024
-
-        # If we have one large agenda item with multiple speech blocks, chunk by speech blocks
-        if (
-            transcript_size_kb > self.MAX_TRANSCRIPT_SIZE_KB
-            and len(transcript.agenda_items) == 1
-            and len(transcript.agenda_items[0].speech_blocks) > 1
-        ):
-            # Nested chunking by speech blocks
-            return self._extract_by_speech_blocks(transcript, seed_entities)
-
-        # Filter seed entities to only those relevant to this chunk
-        if seed_entities:
-            chunk_text = self._get_chunk_text(transcript)
-            filtered_seeds = self._filter_relevant_seeds(seed_entities, chunk_text)
-            if filtered_seeds:
-                print(
-                    f"         🔍 Filtered seeds: {len(seed_entities)} → {len(filtered_seeds)} relevant entities"
+        if method == "chunked":
+            if len(transcript.agenda_items) < 2:
+                raise ValueError(
+                    "Chunked extraction requires multiple agenda items. "
+                    "Use method='two-pass' or split the transcript."
                 )
-            seed_entities = filtered_seeds
-
-        # Otherwise process normally
-        # Build prompt for Gemini
-        prompt = self._build_extraction_prompt()
-
-        # Convert transcript to dict for Gemini
-        transcript_data = transcript.to_dict()
-
-        # Get structured extraction from Gemini
-        result = self.gemini_client.extract_entities_and_concepts(
-            transcript_data=transcript_data, prompt=prompt, response_schema=ENTITY_EXTRACTION_SCHEMA
-        )
-
-        # Parse result into entity and relationship objects
-        session_id = f"{transcript.chamber}-{transcript.date.isoformat()}"
-
-        entities = self._parse_entities(result["entities"], transcript, session_id)
-        relationships = self._parse_relationships(result["relationships"], transcript, session_id)
-
-        return ExtractionResult(
-            session_id=session_id, entities=entities, relationships=relationships
+            print(f"   📦 Processing {len(transcript.agenda_items)} agenda items separately...")
+            return self._extract_chunked(transcript, seed_entities)
+        raise ValueError(
+            f"Unknown extraction method: {method}. Use 'auto', 'two-pass', or 'chunked'."
         )
 
     def _extract_chunked(
         self, transcript: SessionTranscript, seed_entities: list[dict] | None = None
     ) -> ExtractionResult:
         """
-        Extract entities by processing each agenda item separately, then merging (legacy mode).
+        Extract entities by processing each agenda item separately, then merging.
 
         Args:
             transcript: Session transcript with multiple agenda items
@@ -333,15 +283,9 @@ class EntityExtractor:
                 video_upload_date=transcript.video_upload_date,
             )
 
-            # Filter seed entities to only those relevant to this chunk
-            chunk_seeds = seed_entities
-            if seed_entities:
-                chunk_text = self._get_chunk_text(chunk_transcript)
-                chunk_seeds = self._filter_relevant_seeds(seed_entities, chunk_text)
-
             # Extract from this chunk
             try:
-                chunk_result = self._extract_single(chunk_transcript, chunk_seeds)
+                chunk_result = self._extract_two_pass(chunk_transcript, seed_entities)
                 all_entities.extend(chunk_result.entities)
                 all_relationships.extend(chunk_result.relationships)
                 print(
@@ -350,81 +294,6 @@ class EntityExtractor:
             except Exception as e:
                 print(f"         ⚠️  Chunk {i} failed: {e}")
                 # Continue with other chunks
-
-        # Merge results
-        return ExtractionResult(
-            session_id=session_id, entities=all_entities, relationships=all_relationships
-        )
-
-    def _extract_by_speech_blocks(
-        self, transcript: SessionTranscript, seed_entities: list[dict] | None = None
-    ) -> ExtractionResult:
-        """
-        Extract entities by processing each speech block separately (nested chunking - legacy).
-
-        Used when a single agenda item is too large. Processes each speaker's
-        contribution individually to avoid response truncation.
-
-        Args:
-            transcript: Session transcript with one large agenda item
-            seed_entities: Optional spaCy-detected entities for context
-
-        Returns:
-            Merged ExtractionResult with all entities and relationships
-        """
-        session_id = f"{transcript.chamber}-{transcript.date.isoformat()}"
-        all_entities = []
-        all_relationships = []
-
-        # Should only have one agenda item
-        if len(transcript.agenda_items) != 1:
-            raise ValueError("_extract_by_speech_blocks expects exactly one agenda item")
-
-        agenda_item = transcript.agenda_items[0]
-        speech_blocks = agenda_item.speech_blocks
-
-        print(f"         📦 Nested chunking: {len(speech_blocks)} speech blocks")
-
-        for i, speech_block in enumerate(speech_blocks, 1):
-            speaker_preview = speech_block.speaker_name[:40]
-            print(f"            Speech block {i}/{len(speech_blocks)}: {speaker_preview}...")
-
-            # Create a partial agenda item with just this speech block
-            partial_agenda_item = TranscriptAgendaItem(
-                topic_title=agenda_item.topic_title,
-                speech_blocks=[speech_block],
-                bill_id=agenda_item.bill_id,
-                bill_match_confidence=agenda_item.bill_match_confidence,
-            )
-
-            # Create a partial transcript with this single speech block
-            chunk_transcript = SessionTranscript(
-                session_title=transcript.session_title,
-                date=transcript.date,
-                agenda_items=[partial_agenda_item],
-                chamber=transcript.chamber,
-                video_url=transcript.video_url,
-                video_title=transcript.video_title,
-                video_upload_date=transcript.video_upload_date,
-            )
-
-            # Filter seed entities to only those relevant to this speech block
-            block_seeds = seed_entities
-            if seed_entities:
-                block_text = self._get_chunk_text(chunk_transcript)
-                block_seeds = self._filter_relevant_seeds(seed_entities, block_text)
-
-            # Extract from this speech block chunk
-            try:
-                chunk_result = self._extract_single(chunk_transcript, block_seeds)
-                all_entities.extend(chunk_result.entities)
-                all_relationships.extend(chunk_result.relationships)
-                print(
-                    f"               ✓ Found {len(chunk_result.entities)} entities, {len(chunk_result.relationships)} relationships"
-                )
-            except Exception as e:
-                print(f"               ⚠️  Speech block {i} failed: {e}")
-                # Continue with other speech blocks
 
         # Merge results
         return ExtractionResult(
@@ -501,15 +370,20 @@ class EntityExtractor:
         prompt = self._build_entity_extraction_prompt(seed_entities)
 
         # Convert transcript to dict
-        transcript_data = transcript.to_dict()
+        transcript_data = self._serialize_transcript(transcript)
 
         # Get structured extraction from Gemini (entities only)
         result = self.gemini_client.extract_entities_and_concepts(
-            transcript_data=transcript_data, prompt=prompt, response_schema=ENTITY_ONLY_SCHEMA
+            transcript_data=transcript_data,
+            prompt=prompt,
+            response_schema=ENTITY_ONLY_SCHEMA,
+            stage="kg_entities",
         )
 
         # Parse result into entity objects
         entities = self._parse_entities(result["entities"], transcript, session_id)
+        speaker_entities = self._extract_speaker_entities(transcript)
+        entities = self._merge_entities(entities, speaker_entities)
 
         return entities
 
@@ -532,52 +406,20 @@ class EntityExtractor:
         prompt = self._build_relationship_extraction_prompt(entities)
 
         # Convert transcript to dict
-        transcript_data = transcript.to_dict()
+        transcript_data = self._serialize_transcript(transcript)
 
         # Get structured extraction from Gemini (relationships only)
         result = self.gemini_client.extract_entities_and_concepts(
-            transcript_data=transcript_data, prompt=prompt, response_schema=RELATIONSHIP_ONLY_SCHEMA
+            transcript_data=transcript_data,
+            prompt=prompt,
+            response_schema=RELATIONSHIP_ONLY_SCHEMA,
+            stage="kg_relationships",
         )
 
         # Parse result into relationship objects
         relationships = self._parse_relationships(result["relationships"], transcript, session_id)
 
         return relationships
-
-    def _build_extraction_prompt(self) -> str:
-        """
-        Build prompt for Gemini entity extraction.
-
-        Returns:
-            Prompt string for entity extraction
-        """
-        prompt = """Extract entities and relationships from this parliamentary transcript.
-
-For each entity:
-- Assign a unique entity_id (e.g., "caricom-org-001")
-- Determine the entity_type: person, organization, place, law, concept, or event
-- Provide the name as mentioned in the text
-- Provide a canonical_name (standardized form)
-- List any aliases or variations mentioned
-
-For each relationship:
-- Use speaker_id for speaker references (use the IDs provided in the transcript)
-- Use entity_id for entity references
-- Determine relation_type: mentions, supports, opposes, relates_to, or references
-- Determine sentiment: positive, negative, or neutral
-- Provide evidence (direct quote from transcript)
-
-Focus on extracting:
-1. Laws and bills being discussed
-2. Organizations mentioned (CARICOM, government bodies, etc.)
-3. Places and countries
-4. Key concepts and topics
-5. Events or initiatives
-6. Relationships showing support, opposition, or thematic connections
-
-Extract all significant entities and relationships from the provided transcript data."""
-
-        return prompt
 
     def _build_entity_extraction_prompt(self, seed_entities: list[dict] | None) -> str:
         """
@@ -592,13 +434,18 @@ Extract all significant entities and relationships from the provided transcript 
         prompt = """Extract ALL entities from this parliamentary transcript with full context.
 
 For each entity:
-- Assign a unique entity_id (e.g., "caricom-org-001")
-- Determine the entity_type: person, organization, place, law, concept, or event
+- Assign a unique entity_id (slug-like and stable across sessions; e.g., "caricom-org-001")
+- Determine the entity_type: person, organization, place, law, concept, event, agenda_item,
+  procedural_step, schedule_item, numeric_fact, policy_position, or funding_status
+- If applicable, set entity_subtype (e.g., bill, act, regulation, mp, minister, committee)
 - Provide the name as mentioned in the text
 - Provide a canonical_name (standardized form)
 - List any aliases or variations mentioned throughout the transcript
 - Provide a brief description of the entity based on context from the transcript
 - Assign an importance score (0-1) based on prominence in discussion
+- Assign a confidence score (0-1) indicating certainty in this entity
+- Provide 1-3 evidence quotes for each entity
+- Provide structured attributes for facts (numbers, dates, times, subjects, predicates, objects)
 
 Focus on extracting:
 1. Laws and bills being discussed
@@ -607,6 +454,10 @@ Focus on extracting:
 4. Key concepts and topics
 5. Events or initiatives
 6. People mentioned (beyond the speakers themselves)
+7. Procedural steps (readings, committee stage, votes)
+8. Schedule items (next sitting date/time)
+9. Numeric facts (counts, quantities, monetary amounts)
+10. Policy positions and funding status statements
 
 IMPORTANT:
 - Use the FULL transcript context to create complete entity profiles
@@ -645,7 +496,7 @@ IMPORTANT:
                 {
                     "entity_id": entity.entity_id,
                     "name": entity.canonical_name,
-                    "type": entity.entity_type.value,
+                    "type": self._normalize_entity_type(entity.entity_type),
                 }
             )
 
@@ -658,7 +509,7 @@ You must ONLY use entity IDs from this complete list of entities:
 For each relationship:
 - Use ONLY entity_id values from the list above for source_id and target_id
 - Use speaker_id for speaker references (these are provided in the transcript)
-- Determine relation_type: mentions, supports, opposes, relates_to, or references
+ - Determine relation_type: mentions, supports, opposes, relates_to, references, introduces, sponsors, questions, answers, rebuts, amends, chairs, reports_on, speaks_on, about, funds, allocates, sets_deadline, corrects, updates, prioritizes, or states
 - Determine sentiment: positive, negative, or neutral
 - Provide evidence (direct quote from transcript that demonstrates this relationship)
 - Assign a confidence score (0-1) for how certain you are about this relationship
@@ -696,19 +547,27 @@ IMPORTANT:
         entities = []
 
         for entity_dict in entity_dicts:
-            # Find mentions in transcript
-            mentions = self._find_mentions(
-                entity_dict["name"], entity_dict.get("aliases", []), transcript, session_id
-            )
-
             entity = Entity(
                 entity_id=entity_dict["entity_id"],
-                entity_type=EntityType(entity_dict["entity_type"]),
+                entity_type=entity_dict["entity_type"],
+                entity_subtype=entity_dict.get("entity_subtype"),
                 name=entity_dict["name"],
                 canonical_name=entity_dict["canonical_name"],
                 aliases=entity_dict.get("aliases", []),
-                mentions=mentions,
+                description=entity_dict.get("description"),
+                importance_score=entity_dict.get("importance", 0.0),
+                entity_confidence=entity_dict.get("confidence"),
+                source="llm",
+                source_ref=session_id,
             )
+            attributes = entity_dict.get("attributes")
+            evidence = entity_dict.get("evidence")
+            if attributes or evidence:
+                entity.meta_data = {}
+                if attributes:
+                    entity.meta_data["attributes"] = attributes
+                if evidence:
+                    entity.meta_data["evidence"] = evidence
             entities.append(entity)
 
         return entities
@@ -736,55 +595,19 @@ IMPORTANT:
             relationship = Relationship(
                 source_id=rel_dict["source_id"],
                 target_id=rel_dict["target_id"],
-                relation_type=RelationType(rel_dict["relation_type"]),
-                sentiment=Sentiment(rel_dict["sentiment"]),
+                relation_type=rel_dict["relation_type"],
+                sentiment=rel_dict.get("sentiment"),
                 evidence=rel_dict["evidence"],
-                session_id=session_id,
-                timestamp=timestamp,
+                confidence=rel_dict.get("confidence"),
+                source="llm",
+                source_ref=session_id,
+                timestamp_seconds=timestamp,
             )
             relationships.append(relationship)
 
         return relationships
 
-    def _find_mentions(
-        self, name: str, aliases: list[str], transcript: SessionTranscript, session_id: str
-    ) -> list[Mention]:
-        """
-        Find all mentions of an entity in the transcript.
-
-        Args:
-            name: Primary entity name
-            aliases: Alternative names
-            transcript: Transcript to search
-            session_id: Session identifier
-
-        Returns:
-            List of Mention objects
-        """
-        mentions = []
-        all_names = [name] + aliases
-
-        for agenda_idx, agenda in enumerate(transcript.agenda_items):
-            for speech in agenda.speech_blocks:
-                for sent_idx, sentence in enumerate(speech.sentences):
-                    # Check if any name variant appears in sentence
-                    text_lower = sentence.text.lower()
-                    for variant in all_names:
-                        if variant.lower() in text_lower:
-                            mention = Mention(
-                                session_id=session_id,
-                                agenda_item_index=agenda_idx,
-                                sentence_index=sent_idx,
-                                timestamp=sentence.start_time,
-                                context=sentence.text[:150],  # First 150 chars
-                                bill_id=agenda.bill_id,  # Link to legislation database
-                            )
-                            mentions.append(mention)
-                            break  # Only one mention per sentence
-
-        return mentions
-
-    def _find_evidence_timestamp(self, evidence: str, transcript: SessionTranscript) -> str:
+    def _find_evidence_timestamp(self, evidence: str, transcript: SessionTranscript) -> int | None:
         """
         Find the timestamp of evidence quote in transcript.
 
@@ -801,6 +624,85 @@ IMPORTANT:
             for speech in agenda.speech_blocks:
                 for sentence in speech.sentences:
                     if evidence_lower in sentence.text.lower():
-                        return sentence.start_time
+                        return self._parse_timecode(sentence.start_time)
 
-        return ""  # Not found
+        return None  # Not found
+
+    def _serialize_transcript(self, transcript: SessionTranscript) -> dict[str, Any]:
+        model_dump = getattr(transcript, "model_dump", None)
+        if callable(model_dump):
+            data = model_dump()
+            return data if isinstance(data, dict) else {}
+        to_dict = getattr(transcript, "to_dict", None)
+        if callable(to_dict):
+            data = to_dict()
+            return data if isinstance(data, dict) else {}
+        if is_dataclass(transcript):
+            from dataclasses import asdict
+
+            data = self._normalize_json(asdict(transcript))
+            return data if isinstance(data, dict) else {}
+        return {}
+
+    def _normalize_json(self, payload):
+        from datetime import date, datetime
+
+        if isinstance(payload, datetime):
+            return payload.isoformat()
+        if isinstance(payload, date):
+            return payload.isoformat()
+        if isinstance(payload, list):
+            return [self._normalize_json(item) for item in payload]
+        if isinstance(payload, dict):
+            return {key: self._normalize_json(value) for key, value in payload.items()}
+        return payload
+
+    def _normalize_entity_type(self, entity_type: Any) -> str:
+        if hasattr(entity_type, "value"):
+            return str(getattr(entity_type, "value"))
+        return str(entity_type)
+
+    def _extract_speaker_entities(self, transcript: SessionTranscript) -> list[Entity]:
+        speakers: dict[str, str] = {}
+        for agenda in transcript.agenda_items:
+            for speech in agenda.speech_blocks:
+                if not speech.speaker_id:
+                    continue
+                speakers[speech.speaker_id] = speech.speaker_name
+
+        speaker_entities = []
+        for speaker_id, speaker_name in speakers.items():
+            speaker_entities.append(
+                Entity(
+                    entity_id=speaker_id,
+                    entity_type="person",
+                    entity_subtype="speaker",
+                    name=speaker_name,
+                    canonical_name=speaker_name,
+                    aliases=[],
+                    description="Parliamentary speaker",
+                    importance_score=1.0,
+                    entity_confidence=1.0,
+                    source="derived",
+                    source_ref=f"{transcript.chamber}-{transcript.date.isoformat()}",
+                    speaker_canonical_id=speaker_id,
+                )
+            )
+        return speaker_entities
+
+    def _merge_entities(self, entities: list[Entity], additions: list[Entity]) -> list[Entity]:
+        existing_ids = {entity.entity_id for entity in entities}
+        for entity in additions:
+            if entity.entity_id not in existing_ids:
+                entities.append(entity)
+                existing_ids.add(entity.entity_id)
+        return entities
+
+    def _parse_timecode(self, time_str: str) -> int:
+        import re
+
+        match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
+        if not match:
+            return 0
+        minutes, seconds, ms = map(int, match.groups())
+        return minutes * 60 + seconds

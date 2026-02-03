@@ -22,6 +22,21 @@ class Relationship(Base):
     sentiment: Mapped[str | None] = mapped_column(String(20))
     evidence: Mapped[str] = mapped_column(TEXT, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(String(50))
+    source_ref: Mapped[str | None] = mapped_column(String(200))
     video_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("videos.id"))
     timestamp_seconds: Mapped[int | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "relation_type": self.relation_type,
+            "sentiment": self.sentiment,
+            "evidence": self.evidence,
+            "confidence": self.confidence,
+            "timestamp_seconds": self.timestamp_seconds,
+            "source": self.source,
+            "source_ref": self.source_ref,
+        }

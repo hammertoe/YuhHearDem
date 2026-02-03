@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, cast
 
 from google import genai
 from google.genai import types
@@ -44,6 +44,45 @@ class GeminiClient:
         self.max_output_tokens = max_output_tokens
         self.thinking_budget = thinking_budget
         self.client = genai.Client(api_key=self.api_key)
+        self.usage_log: list[dict[str, Any]] = []
+
+    def _extract_usage(self, response: Any) -> dict[str, int] | None:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+
+        if isinstance(usage, dict):
+            prompt_tokens = usage.get("prompt_token_count")
+            output_tokens = usage.get("candidates_token_count")
+            total_tokens = usage.get("total_token_count")
+        else:
+            prompt_tokens = getattr(usage, "prompt_token_count", None)
+            output_tokens = getattr(usage, "candidates_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
+
+        if prompt_tokens is None and output_tokens is None and total_tokens is None:
+            return None
+
+        return {
+            "prompt_tokens": int(prompt_tokens or 0),
+            "output_tokens": int(output_tokens or 0),
+            "total_tokens": int(total_tokens or 0),
+        }
+
+    def _record_usage(self, response: Any, stage: str, duration_ms: float) -> None:
+        usage = self._extract_usage(response)
+        if not usage:
+            return
+        self.usage_log.append(
+            {
+                "stage": stage,
+                "model": self.model,
+                "duration_ms": duration_ms,
+                **usage,
+            }
+        )
 
     def _safe_json_parse(self, response_text: str, context: str = "") -> dict[str, Any]:
         """
@@ -85,6 +124,7 @@ class GeminiClient:
         pdf_path: Path,
         prompt: str,
         response_schema: dict | None = None,
+        stage: str = "pdf_vision",
     ) -> dict[str, Any]:
         """
         Analyze a PDF using Gemini vision with optional structured output.
@@ -101,7 +141,7 @@ class GeminiClient:
         uploaded_file = self.client.files.upload(file=str(pdf_path))
 
         # Prepare generation config
-        config_kwargs = {
+        config_kwargs: dict[str, Any] = {
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
         }
@@ -122,14 +162,17 @@ class GeminiClient:
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 # Generate content
+                start_time = time.perf_counter()
                 response = self.client.models.generate_content(
                     model=self.model,
                     contents=[prompt, uploaded_file],
                     config=generation_config,
                 )
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                self._record_usage(response, stage=stage, duration_ms=duration_ms)
 
                 # Parse response with enhanced error messages
-                return self._safe_json_parse(response.text, context="PDF vision analysis")
+                return self._safe_json_parse(response.text or "", context="PDF vision analysis")
 
             except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
@@ -139,6 +182,8 @@ class GeminiClient:
                     # Final failure - re-raise
                     raise
 
+        raise RuntimeError("Failed to analyze PDF with Gemini")
+
     def analyze_video_with_transcript(
         self,
         video_url: str,
@@ -147,6 +192,7 @@ class GeminiClient:
         fps: float = 0.5,
         start_time: int | None = None,
         end_time: int | None = None,
+        stage: str = "video_transcription",
     ) -> dict[str, Any]:
         """
         Analyze a YouTube video and generate transcript.
@@ -163,7 +209,7 @@ class GeminiClient:
             Parsed JSON response from model
         """
         # Prepare generation config
-        config_kwargs = {
+        config_kwargs: dict[str, Any] = {
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
         }
@@ -181,13 +227,13 @@ class GeminiClient:
         generation_config = types.GenerateContentConfig(**config_kwargs)
 
         # Build video metadata with FPS and optional time segments
-        video_metadata_kwargs = {"fps": fps}
-        if start_time is not None:
-            video_metadata_kwargs["start_offset"] = f"{start_time}s"
-        if end_time is not None:
-            video_metadata_kwargs["end_offset"] = f"{end_time}s"
-
-        video_metadata = types.VideoMetadata(**video_metadata_kwargs)
+        start_offset = f"{start_time}s" if start_time is not None else None
+        end_offset = f"{end_time}s" if end_time is not None else None
+        video_metadata = types.VideoMetadata(
+            fps=fps,
+            start_offset=start_offset,
+            end_offset=end_offset,
+        )
 
         # Build content with proper structure for YouTube URL
         content = types.Content(
@@ -204,14 +250,19 @@ class GeminiClient:
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 # Generate content
+                start_time_perf = time.perf_counter()
                 response = self.client.models.generate_content(
                     model=self.model,
                     contents=content,
                     config=generation_config,
                 )
+                duration_ms = (time.perf_counter() - start_time_perf) * 1000
+                self._record_usage(response, stage=stage, duration_ms=duration_ms)
 
                 # Parse response with enhanced error messages
-                return self._safe_json_parse(response.text, context="video transcript analysis")
+                return self._safe_json_parse(
+                    response.text or "", context="video transcript analysis"
+                )
 
             except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
@@ -221,11 +272,14 @@ class GeminiClient:
                     # Final failure - re-raise
                     raise
 
+        raise RuntimeError("Failed to analyze video with Gemini")
+
     def extract_entities_and_concepts(
         self,
         transcript_data: dict,
         prompt: str,
         response_schema: dict | None = None,
+        stage: str = "kg_extraction",
     ) -> dict[str, Any]:
         """
         Extract entities and concepts from structured transcript.
@@ -242,7 +296,7 @@ class GeminiClient:
         transcript_json = json.dumps(transcript_data, indent=2)
 
         # Prepare generation config
-        config_kwargs = {
+        config_kwargs: dict[str, Any] = {
             "temperature": self.temperature,
             "max_output_tokens": self.max_output_tokens,
         }
@@ -266,14 +320,17 @@ class GeminiClient:
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 # Generate content
+                start_time_perf = time.perf_counter()
                 response = self.client.models.generate_content(
                     model=self.model,
                     contents=full_prompt,
                     config=generation_config,
                 )
+                duration_ms = (time.perf_counter() - start_time_perf) * 1000
+                self._record_usage(response, stage=stage, duration_ms=duration_ms)
 
                 # Parse response with enhanced error messages
-                return self._safe_json_parse(response.text, context="entity extraction")
+                return self._safe_json_parse(response.text or "", context="entity extraction")
 
             except json.JSONDecodeError:
                 if attempt < self.MAX_RETRIES:
@@ -282,3 +339,49 @@ class GeminiClient:
                 else:
                     # Final failure - re-raise
                     raise
+
+        raise RuntimeError("Failed to extract entities with Gemini")
+
+    def embed_texts(
+        self,
+        texts: list[str],
+        model: str = "text-embedding-004",
+        stage: str = "embeddings",
+    ) -> list[list[float]]:
+        """
+        Generate embeddings for text chunks.
+
+        Args:
+            texts: List of text strings to embed
+            model: Embedding model name
+
+        Returns:
+            List of embedding vectors
+        """
+        start_time_perf = time.perf_counter()
+        response = self.client.models.embed_content(
+            model=model,
+            contents=texts,
+        )
+        duration_ms = (time.perf_counter() - start_time_perf) * 1000
+        self._record_usage(response, stage=stage, duration_ms=duration_ms)
+
+        embeddings: list[list[float]] = []
+        raw_embeddings = getattr(response, "embeddings", None)
+        if raw_embeddings is None:
+            single_embedding = getattr(response, "embedding", None)
+            if single_embedding is None:
+                raise ValueError("Unexpected embeddings response format")
+            return [list(cast(Iterable[float], single_embedding))]
+
+        for item in raw_embeddings:
+            values = getattr(item, "values", None)
+            if values is None:
+                values = getattr(item, "embedding", None)
+            if values is None:
+                values = item
+            if values is None:
+                raise ValueError("Unexpected embedding item format")
+            embeddings.append(list(cast(Iterable[float], values)))
+
+        return embeddings

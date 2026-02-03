@@ -1,8 +1,10 @@
 """Video transcription service tests"""
 
+from datetime import date
 from unittest.mock import Mock
 
 from parsers.models import OrderPaper
+from parsers.transcript_models import Sentence, SpeechBlock, TranscriptAgendaItem
 from services.video_transcription import VideoTranscriptionService
 
 
@@ -24,7 +26,7 @@ class TestVideoTranscriptionService:
 
         order_paper = OrderPaper(
             session_title="Test Session",
-            session_date="2024-01-01",
+            session_date=date(2024, 1, 1),
             speakers=[],
             agenda_items=[],
         )
@@ -70,7 +72,7 @@ class TestVideoTranscriptionService:
 
         order_paper = OrderPaper(
             session_title="Test Session",
-            session_date="2024-01-01",
+            session_date=date(2024, 1, 1),
             speakers=[],
             agenda_items=[],
         )
@@ -84,3 +86,32 @@ class TestVideoTranscriptionService:
         _, kwargs = mock_client.analyze_video_with_transcript.call_args
 
         assert kwargs["response_schema"] == service.TRANSCRIPT_SCHEMA
+
+    def test_parse_response_builds_transcript_objects(self):
+        """Agenda items and speech blocks should be dataclasses."""
+        mock_client = Mock()
+        service = VideoTranscriptionService(mock_client)
+
+        response = {
+            "session_title": "Test Session",
+            "date": "2024-01-01",
+            "chamber": "house",
+            "agenda_items": [
+                {
+                    "topic_title": "Opening",
+                    "speech_blocks": [
+                        {
+                            "speaker_name": "Hon. Jane Doe",
+                            "speaker_id": "speaker-1",
+                            "sentences": [{"start_time": "0m0s0ms", "text": "Welcome."}],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        transcript = service._parse_response(response)
+
+        assert isinstance(transcript.agenda_items[0], TranscriptAgendaItem)
+        assert isinstance(transcript.agenda_items[0].speech_blocks[0], SpeechBlock)
+        assert isinstance(transcript.agenda_items[0].speech_blocks[0].sentences[0], Sentence)

@@ -52,3 +52,14 @@ class TestEmbeddingService:
 
         assert len(embeddings) == 4
         assert mock_model.encode.call_count == 2
+
+    def test_generate_embeddings_with_gemini_client(self):
+        """Test embedding generation with Gemini client."""
+        mock_client = Mock()
+        mock_client.embed_texts.return_value = [[0.1, 0.2, 0.3]]
+
+        service = EmbeddingService(gemini_client=mock_client)
+        embeddings = service.generate_embeddings(["test text"])
+
+        assert embeddings == [[0.1, 0.2, 0.3]]
+        mock_client.embed_texts.assert_called_once()

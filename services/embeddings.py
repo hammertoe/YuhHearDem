@@ -13,6 +13,12 @@ class EmbeddingService:
             gemini_client: Optional Gemini client (if None, will use sentence-transformers)
         """
         self.gemini_client = gemini_client
+        if gemini_client:
+            self.model_name = "text-embedding-004"
+            self.model_version = "gemini"
+        else:
+            self.model_name = "all-MiniLM-L6-v2"
+            self.model_version = "sentence-transformers"
 
     def generate_embeddings(
         self,
@@ -27,6 +33,9 @@ class EmbeddingService:
         Returns:
             List of embedding vectors (384 dimensions each)
         """
+        if self.gemini_client:
+            return self.gemini_client.embed_texts(texts)
+
         try:
             from sentence_transformers import SentenceTransformer
 
