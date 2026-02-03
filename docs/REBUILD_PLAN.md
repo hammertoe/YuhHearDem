@@ -66,6 +66,7 @@ This plan outlines the ground-up rebuild of the YuhHearDem parliamentary transcr
 ## Technology Stack
 
 ### Backend
+
 - **Language**: Python 3.13+
 - **Framework**: FastAPI with uvicorn
 - **Database**: PostgreSQL 16+ with pgvector extension
@@ -84,6 +85,7 @@ This plan outlines the ground-up rebuild of the YuhHearDem parliamentary transcr
   - httpx (async HTTP client)
 
 ### Frontend
+
 - **Framework**: Vanilla JavaScript (no frameworks)
 - **Styling**: Tailwind CSS (CDN)
 - **Markdown**: marked.js
@@ -91,6 +93,7 @@ This plan outlines the ground-up rebuild of the YuhHearDem parliamentary transcr
 - **Communication**: Server-Sent Events (SSE) for streaming
 
 ### Infrastructure
+
 - **Server**: VPS (self-hosted)
 - **Reverse Proxy**: Nginx
 - **Process Manager**: systemd or supervisor
@@ -442,6 +445,7 @@ yuhheardem/
    - [ ] Set up CI/CD pipeline (GitHub Actions or similar)
 
 **Deliverables**:
+
 - Running FastAPI application
 - Database schema migrated
 - Test suite infrastructure in place
@@ -488,6 +492,7 @@ yuhheardem/
    - [ ] Benchmark embedding performance
 
 **Deliverables**:
+
 - Order paper processing service working
 - Video transcription service working
 - Entity extraction service working
@@ -535,6 +540,7 @@ yuhheardem/
    - [ ] Write API tests
 
 **Deliverables**:
+
 - Complete REST API with all endpoints
 - Parliamentary agent working with function calling
 - Chat API with streaming support
@@ -589,6 +595,7 @@ yuhheardem/
    - [ ] Fix any bugs found
 
 **Deliverables**:
+
 - Working frontend UI matching original
 - Chat interface with streaming
 - Graph visualization working
@@ -643,6 +650,7 @@ yuhheardem/
    - [ ] Document deployment process
 
 **Deliverables**:
+
 - Application deployed to VPS
 - SSL configured
 - Automated backups in place
@@ -693,6 +701,7 @@ yuhheardem/
    - [ ] Future enhancements documentation
 
 **Deliverables**:
+
 - MVP with real data loaded
 - All core features working
 - Performance acceptable
@@ -1063,6 +1072,7 @@ uvicorn app.main:app --reload
 ### Production Deployment
 
 **Option 1: Docker Compose (Simple)**
+
 ```bash
 # On VPS
 git clone <repo>
@@ -1073,6 +1083,7 @@ docker-compose up -d
 ```
 
 **Option 2: Systemd (More Control)**
+
 ```bash
 # Install dependencies
 sudo apt install postgresql-16-pgvector python3.13
@@ -1204,10 +1215,10 @@ MVP is successful when:
 - **Architecture Analysis**: `docs/ARCHITECTURE_ANALYSIS.md`
 - **Experimental Rewrite**: `../yuhheardem2/`
 - **Original Site**: `../YuhHearDem.orig/`
-- **Gemini API**: https://ai.google.dev/gemini-api/docs
-- **FastAPI**: https://fastapi.tiangolo.com/
-- **pgvector**: https://github.com/pgvector/pgvector
-- **Alembic**: https://alembic.sqlalchemy.org/
+- **Gemini API**: <https://ai.google.dev/gemini-api/docs>
+- **FastAPI**: <https://fastapi.tiangolo.com/>
+- **pgvector**: <https://github.com/pgvector/pgvector>
+- **Alembic**: <https://alembic.sqlalchemy.org/>
 
 ---
 

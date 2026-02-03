@@ -60,7 +60,7 @@ health_check() {
 
     for i in $(seq 1 $max_retries); do
         local response=$(curl -sf "http://localhost:${port}/health" 2>/dev/null || true)
-        
+
         if [[ -n "$response" ]]; then
             local status=$(echo "$response" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
             if [[ "$status" == "healthy" ]]; then
@@ -68,7 +68,7 @@ health_check() {
                 return 0
             fi
         fi
-        
+
         log_warn "Health check attempt $i/$max_retries failed, retrying in ${retry_interval}s..."
         sleep $retry_interval
     done

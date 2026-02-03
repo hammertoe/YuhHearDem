@@ -5,6 +5,7 @@ Barbados Parliamentary Knowledge Graph - A comprehensive system for analyzing an
 ## Overview
 
 YuhHearDem uses advanced NLP techniques to:
+
 - Extract and parse parliamentary documents (Hansard)
 - Process speaker information and metadata
 - Generate vector embeddings for semantic search
@@ -22,6 +23,29 @@ YuhHearDem uses advanced NLP techniques to:
 - **Reverse Proxy**: nginx with Let's Encrypt SSL
 
 ## Quick Start
+
+### Get Started Fast (Ingest Data)
+
+**New!** Complete ingestion pipeline now available. See [QUICKSTART.md](./QUICKSTART.md) for detailed instructions.
+
+```bash
+# 1. Set up environment
+cp .env.example .env
+# Edit .env with your GOOGLE_API_KEY
+
+# 2. Start database
+docker-compose up -d
+
+# 3. Run migrations
+alembic upgrade head
+
+# 4. Ingest data
+# Option A: Full pipeline (automatic)
+python scripts/run_full_ingestion.py --download-videos
+
+# Option B: Manual step-by-step
+# See scripts/README.md for details
+```
 
 ### Local Development
 
@@ -47,7 +71,7 @@ cp .env.example .env
 # Run migrations
 alembic upgrade head
 
-# Start the application
+# Start application
 uvicorn app.main:app --reload
 ```
 
@@ -172,6 +196,7 @@ YuhHearDem uses a blue-green deployment strategy on the `yhd` server:
 - **GitHub Actions** for automated builds and deployments
 
 For detailed deployment instructions, see:
+
 - [Deployment Quickstart](./docs/DEPLOYMENT_QUICKSTART.md) - Get started with production deployment
 - [Deployment Guide](./docs/deployment.md) - Comprehensive deployment documentation
 
@@ -195,6 +220,7 @@ sudo ./deploy/deploy.sh rollback
 ### Automated Deployment
 
 Every push to `main` triggers:
+
 1. Build Docker image
 2. Push to GitHub Container Registry
 3. SSH to production server
@@ -256,6 +282,7 @@ FUZZY_MATCH_THRESHOLD=85
 ## Support
 
 For issues, questions, or contributions:
+
 - Open an issue on GitHub
 - Check existing documentation
 - Review deployment status on server

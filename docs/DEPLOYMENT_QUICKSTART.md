@@ -41,6 +41,7 @@ cd /opt/yuhheardem
 ```
 
 The setup script will:
+
 - Create required directories
 - Set up Docker network
 - Copy deployment files
@@ -92,6 +93,7 @@ sudo ./deploy/deploy.sh latest
 ```
 
 This will:
+
 1. Start PostgreSQL container
 2. Run database migrations
 3. Pull the Docker image from GHCR
@@ -128,6 +130,7 @@ git push origin main
 ```
 
 GitHub Actions will:
+
 1. Build Docker image
 2. Push to GitHub Container Registry
 3. SSH to yhd server
@@ -254,6 +257,7 @@ cat /etc/nginx/sites-available/yuhheardem.com | grep proxy_pass
 ## Support
 
 For issues or questions:
+
 - Check server logs: `docker logs yhd-web-blue -f`
 - Check nginx logs: `sudo tail -f /var/log/nginx/error.log`
 - Review deployment status: `./deploy/deploy.sh status`

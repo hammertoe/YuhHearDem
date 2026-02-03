@@ -123,11 +123,13 @@ This ensures the key can only be used for deployment purposes.
 ### SSH Connection Fails
 
 1. Verify the secret is correctly set:
+
 ```bash
 gh secret list
 ```
 
 2. Check server firewall allows SSH:
+
 ```bash
 # On the server
 sudo ufw status
@@ -135,6 +137,7 @@ sudo ufw allow 22/tcp
 ```
 
 3. Verify key format - must be in OpenSSH format:
+
 ```bash
 # Check key format
 head -1 ~/.ssh/github_actions_yhd
@@ -144,12 +147,14 @@ head -1 ~/.ssh/github_actions_yhd
 ### Permission Denied
 
 1. Check file permissions on server:
+
 ```bash
 ls -la ~/.ssh/authorized_keys
 # Should be: -rw------- (600)
 ```
 
 2. Fix permissions if needed:
+
 ```bash
 chmod 600 ~/.ssh/authorized_keys
 chmod 700 ~/.ssh

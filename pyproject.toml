@@ -1,0 +1,136 @@
+[project]
+name = "yuhheardem"
+version = "0.1.0"
+description = "Barbados Parliamentary Knowledge Graph"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.6",
+    "google-genai>=0.3.0",
+    "spacy>=3.7.2",
+    "sentence-transformers>=2.3.1",
+    "thefuzz>=0.3.1",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.1.0",
+    "yt-dlp>=2023.12.30",
+    "requests>=2.31.0",
+    "httpx>=0.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+    "pytest-cov>=4.1.0",
+    "pytest-factoryboy>=2.8.1",
+    "factory-boy>=3.3.0",
+    "ruff>=0.1.9",
+    "mypy>=1.8.0",
+    "faker>=22.2.0",
+    "pre-commit>=3.6.0",
+    "bandit[toml]>=1.7.10",
+    "types-beautifulsoup4",
+    "types-lxml",
+    "types-requests",
+    "types-pyyaml",
+    "asyncpg-stubs",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    "htmlcov",
+    "migrations/",
+]
+lint.select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    # "UP",  # pyupgrade (temporarily disabled)
+]
+lint.ignore = [
+    "E501",  # line too long (handled by formatter)
+    "E402",  # module level import not at top of file (imports in fixtures are intentional)
+]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = [
+    "venv/",
+    ".venv/",
+    "build/",
+    "dist/",
+    "migrations/",
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["app", "core", "api", "models", "parsers", "services"]
+omit = [
+    "tests/*",
+    "venv/*",
+    ".venv/*",
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.bandit]
+# Security linter configuration
+exclude_dirs = ["*/tests/*", "*/test_*"]
+skips = ["B101"]  # Skip assert_used check (assert is standard in pytest)

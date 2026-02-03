@@ -55,6 +55,7 @@ Stage 4: Agentic RAG Query System
 **Purpose**: Parse parliamentary order paper PDFs to extract structured session context.
 
 **Key Features**:
+
 - Uses **Gemini Vision API** to analyze PDF pages
 - Handles PDFs arranged for printing (not logical reading order)
 - Extracts:
@@ -64,11 +65,13 @@ Stage 4: Agentic RAG Query System
 - Output: `OrderPaper` dataclass with speaker list and agenda
 
 **Why This Matters**: The order paper provides crucial context for video transcription:
+
 - Known speaker list helps identify who's speaking in the video
 - Agenda structure guides transcript organization
 - Enables speaker deduplication via fuzzy matching
 
 **Code Pattern**:
+
 ```python
 class OrderPaperParser:
     def parse(self, pdf_path: Path) -> OrderPaper:
@@ -84,6 +87,7 @@ class OrderPaperParser:
 **Purpose**: Transcribe parliamentary session videos with precise speaker attribution.
 
 **Key Innovation**: Passes the **parsed Order Paper as context** to Gemini, enabling:
+
 - Accurate speaker identification (comparing against known speaker list)
 - Agenda-based transcript organization
 - Sentence-level timestamp precision
@@ -107,6 +111,7 @@ VideoTranscriptionParser
 ```
 
 **Speaker Matching Algorithm**:
+
 1. **Exact match** (O(1)) - Quick lookup
 2. **Case-insensitive match** (O(n)) - Handles capitalization differences
 3. **Fuzzy matching** with **ambiguity detection**:
@@ -115,12 +120,14 @@ VideoTranscriptionParser
    - Creates new ID for ambiguous matches to prevent misattribution
 
 **Name Normalization** (critical for fuzzy matching):
+
 - Removes titles (Hon., Mr., Dr., K.C., M.P., etc.)
 - Handles compound titles ("the honourable" before "honourable")
 - Strips punctuation
 - Lowercases for comparison
 
 **Chunking Strategy**:
+
 - Token estimation: 383 tokens/frame (measured from actual API usage)
 - Safe limit: 500,000 tokens (~87 min at 0.25 FPS)
 - Default chunk size: 60 minutes
@@ -128,6 +135,7 @@ VideoTranscriptionParser
 - Timestamp adjustment: Detects relative vs absolute timestamps from Gemini
 
 **Output**: `SessionTranscript` with:
+
 - Session metadata (title, date, chamber, video URLs)
 - Agenda items with speech blocks
 - Each sentence has: text, speaker_name, speaker_id, timestamp
@@ -141,6 +149,7 @@ VideoTranscriptionParser
 **Model**: `en_core_web_trf` (transformer-based, accurate but slower than small models)
 
 **Features**:
+
 - **EntityRuler integration**: Pre-loads known speakers and entities from JSON files
   - Adds patterns from `data/speakers.json` and `data/entities.json`
   - Ensures canonical IDs are preserved for known entities
@@ -153,12 +162,14 @@ VideoTranscriptionParser
   - `NORP/FAC/PRODUCT/WORK_OF_ART/LANGUAGE` → `EntityType.CONCEPT`
 
 **Entity ID Generation**:
+
 - Slugifies entity name (lowercase, hyphenated)
 - Removes special characters
 - Adds 8-char UUID suffix for uniqueness
 - Example: `"CARICOM"` → `"caricom-a7b3c2d1"`
 
 **Use Cases**:
+
 1. **Pre-processing for LLM extraction**: Provides candidate entities as "seed" context
 2. **Standalone extraction**: Fast entity detection without API calls
 3. **Entity mention tracking**: Records where each entity appears in transcript
@@ -172,6 +183,7 @@ VideoTranscriptionParser
 **Two-Pass Extraction Strategy** (default method):
 
 **Pass 1: Entity Extraction**
+
 - Sends full transcript to Gemini
 - Extracts ALL entities with:
   - Unique entity_id
@@ -181,6 +193,7 @@ VideoTranscriptionParser
 - Optional: Uses spaCy entities as "seed" context
 
 **Pass 2: Relationship Extraction**
+
 - Sends same transcript + complete entity list from Pass 1
 - Extracts relationships between entities:
   - Types: mentions, supports, opposes, relates_to, references
@@ -189,16 +202,19 @@ VideoTranscriptionParser
   - Confidence score
 
 **Why Two-Pass?**
+
 - Eliminates entity fragmentation across chunks
 - LLM has full context for relationship inference
 - More consistent entity IDs
 - Cross-agenda relationships detected
 
 **Alternative Methods**:
+
 - **Chunked mode**: Processes by agenda item (legacy, for very large transcripts >3.5MB)
 - **Single mode**: One-shot extraction (legacy, smaller transcripts)
 
 **Output Schema**:
+
 ```json
 {
   "entities": [{
@@ -222,6 +238,7 @@ VideoTranscriptionParser
 ```
 
 **Mention Detection**: After LLM extraction, the system scans the transcript to find:
+
 - Where each entity was mentioned
 - Timestamp of each mention
 - Context (sentence text)
@@ -232,6 +249,7 @@ VideoTranscriptionParser
 ### 5. Storage Layer
 
 #### Entity Store (`src/storage/entity_store.py`)
+
 - **Purpose**: Persistent storage for entities and relationships
 - **Format**: JSON files (`data/entities.json`, `data/relationships.json`)
 - **Features**:
@@ -241,6 +259,7 @@ VideoTranscriptionParser
   - Index by ID, name, and type
 
 #### Vector Store (`src/storage/vector_store.py`)
+
 - **Purpose**: Semantic search over transcript sentences
 - **Technology**: ChromaDB with cosine similarity
 - **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (384-dim)
@@ -251,10 +270,12 @@ VideoTranscriptionParser
   - Filtered search by chamber, date range
 
 #### Legislation Store (`src/storage/legislation_store.py`)
+
 - **Purpose**: Store bill/resolution metadata from parliament website
 - **Links**: Connects law entities to full bill details (stages, PDFs, sponsors)
 
 #### Speaker Store (`src/storage/store.py`)
+
 - **Purpose**: Canonical speaker database with deduplication
 - **Fuzzy Matching**: Prevents duplicate speaker entries using `thefuzz`
 
@@ -265,6 +286,7 @@ VideoTranscriptionParser
 **Purpose**: Natural language query interface using Gemini function calling.
 
 **Architecture**:
+
 - **System**: Gemini 2.5 Flash with tool use (function calling)
 - **Max Iterations**: 10 (configurable)
 - **Tools Available**:
@@ -279,6 +301,7 @@ VideoTranscriptionParser
   9. `get_session_details()` - Session metadata
 
 **Query Flow**:
+
 1. User asks natural language question
 2. Agent decides which tools to call
 3. Agent iteratively builds context (multi-hop reasoning)
@@ -286,6 +309,7 @@ VideoTranscriptionParser
 5. Each citation includes: speaker, timestamp, video URL, quote
 
 **Example Multi-Hop Query**:
+
 ```
 User: "What did Senator Trim say about the Cybercrime Bill?"
 
@@ -373,26 +397,31 @@ Relationship
 ### Main Entry Points
 
 1. **`transcribe_video.py`** - Video transcription workflow
+
    ```bash
    python transcribe_video.py --url YOUTUBE_URL --order-paper PDF_PATH --full
    ```
 
 2. **`extract_entities.py`** - Entity extraction from transcripts
+
    ```bash
    python extract_entities.py --transcript FILE.json --spacy
    ```
 
 3. **`process_order_paper.py`** - Single order paper processing
+
    ```bash
    python process_order_paper.py PDF_PATH
    ```
 
 4. **`index_knowledge_graph.py`** - Build vector store from transcripts
+
    ```bash
    python index_knowledge_graph.py
    ```
 
 5. **`link_legislation.py`** - Link entities to legislation database
+
    ```bash
    python link_legislation.py
    ```
@@ -410,17 +439,20 @@ Relationship
 ## Key Technical Decisions
 
 ### 1. Why Gemini?
+
 - **Vision**: Native PDF understanding without OCR preprocessing
 - **Video**: Direct YouTube URL processing with frame sampling
 - **Structured Output**: JSON schema enforcement for reliable parsing
 - **Context Window**: 1M tokens handles most parliamentary sessions
 
 ### 2. Why spaCy + LLM Hybrid?
+
 - **spaCy**: Fast, local, deterministic entity detection
 - **LLM**: Captures context, relationships, nuanced understanding
 - **Combination**: spaCy provides candidates, LLM validates and enriches
 
 ### 3. Why Fuzzy Matching?
+
 - Parliamentary names have variations:
   - "Hon. L. R. Cummins" vs "Cummins" vs "Mr. Cummins"
   - Title differences across sessions
@@ -428,11 +460,13 @@ Relationship
 - **Solution**: Normalized fuzzy matching with configurable thresholds
 
 ### 4. Why Order Paper as Context?
+
 - Without context: Gemini must guess speakers from video
 - With context: Known speaker list guides attribution
 - Result: Higher accuracy, consistent IDs, better transcript structure
 
 ### 5. Why Two-Pass Entity Extraction?
+
 - Single-pass across chunks: Entity fragmentation
 - Two-pass on full transcript: Consistent entities, cross-context relationships
 - Trade-off: Requires transcript to fit in context window (most do)
@@ -501,17 +535,20 @@ ParliamentaryAgent:
 ## Configuration & Environment
 
 **Environment Variables** (`.env` file):
+
 ```bash
 GOOGLE_API_KEY=your_gemini_api_key_here
 ```
 
 **Key Configuration**:
+
 - **Fuzzy Threshold**: 85% (configurable in parsers/stores)
 - **Chunk Size**: 60 minutes (configurable in VideoTranscriptionParser)
 - **FPS**: 0.25 (lower = fewer tokens, higher = more detail)
 - **Max Tokens**: 500,000 safe limit for chunking decisions
 
 **Data Directory Structure**:
+
 ```
 data/
 ├── order_papers/          # Input PDFs
@@ -552,7 +589,8 @@ data/
 
 ## Recommendations for New Implementation
 
-### Keep:
+### Keep
+
 - Order Paper as context approach
 - Two-pass entity extraction
 - Fuzzy speaker matching with normalization
@@ -560,7 +598,8 @@ data/
 - Agentic RAG with function calling
 - JSON-based storage (simple, debuggable)
 
-### Improve:
+### Improve
+
 - Add proper database (PostgreSQL + pgvector) instead of JSON files
 - Implement async processing for batch operations
 - Add comprehensive logging and monitoring
@@ -569,7 +608,8 @@ data/
 - Implement incremental updates (don't re-process unchanged data)
 - Add tests (current test coverage is minimal)
 
-### Consider:
+### Consider
+
 - Whisper v3 for initial transcription (faster/cheaper than Gemini)
 - Use Gemini only for entity extraction and speaker attribution
 - Implement streaming processing for live sessions
@@ -581,6 +621,7 @@ data/
 ## Dependencies
 
 **Core**:
+
 - `google-genai` - Gemini API client
 - `spacy` + `en_core_web_trf` - NLP preprocessing
 - `chromadb` + `sentence-transformers` - Vector search
@@ -589,6 +630,7 @@ data/
 - `pydantic` - Data validation
 
 **Utilities**:
+
 - `yt-dlp` - YouTube metadata extraction
 - `beautifulsoup4` + `lxml` - Web scraping
 - `python-dotenv` - Environment management
@@ -602,6 +644,7 @@ This system represents a sophisticated approach to parliamentary transcript proc
 The **two-pass entity extraction** and **hybrid spaCy + LLM approach** provide a good balance of efficiency and accuracy. The **agentic RAG system** demonstrates how LLMs can effectively query structured knowledge graphs when given appropriate tools.
 
 For a production rewrite, focus on:
+
 1. **Data integrity** - Proper database with transactions
 2. **Observability** - Logging, metrics, error tracking
 3. **Scalability** - Async processing, caching strategies
