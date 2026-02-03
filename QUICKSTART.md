@@ -2,101 +2,82 @@
 
 This guide walks you through getting YuhHearDem running with real data.
 
-## Prerequisites
-
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your GOOGLE_API_KEY and DATABASE_URL
-   ```
-
-3. **Start PostgreSQL:**
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Run migrations:**
-   ```bash
-   source venv/bin/activate
-   alembic upgrade head
-   ```
-
-## Ingestion Options
-
-### Option 1: Full Pipeline (Automatic)
-
-Fastest way to get started:
+## Step 1: Setup
 
 ```bash
-# Step 1: Create video URL list
-echo "https://www.youtube.com/watch?v=VIDEO_ID_1" > data/videos/urls.txt
-echo "https://www.youtube.com/watch?v=VIDEO_ID_2" >> data/videos/urls.txt
+# Install dependencies
+pip install -r requirements.txt
 
-# Step 2: Run full pipeline
-python scripts/run_full_ingestion.py --download-videos
+# Set up environment
+cp .env.example .env
+# Edit .env with your GOOGLE_API_KEY and DATABASE_URL
+
+# Start PostgreSQL
+docker-compose up -d
+
+# Run migrations
+alembic upgrade head
 ```
 
-This will:
-1. Scrape session papers from parliament website
-2. Download PDFs to `data/papers/`
-3. Parse PDFs with Gemini Vision
-4. Download YouTube videos to `data/videos/`
-5. Transcribe videos with Gemini
-6. Extract entities and relationships
-7. Save everything to database
+## Step 2: Get Data
 
-### Option 2: Manual Step-by-Step
+### Option A: Manual (Recommended for getting started)
 
-For more control, run each step manually:
+1. **Download order papers:**
+   - Go to: https://www.barbadosparliament.com/order_papers/search
+   - Click "House of Assembly" or "The Senate"
+   - Download PDFs to `data/papers/`
 
-#### Step 1: Download Order Papers
+2. **Download YouTube videos:**
+   - Go to Barbados Parliament YouTube channel
+   - Copy video URLs to a text file
+   - Save as `data/videos/urls.txt`
 
-Option A: Scrape from website
 ```bash
+mkdir -p data/papers data/videos
+
+# Download videos from URL list
+python scripts/simple_download_video.py https://www.youtube.com/watch?v=VIDEO_ID
+```
+
+### Option B: Automated
+
+```bash
+# Scrape and download papers
 python scripts/scrape_session_papers.py --download
+
+# The scraper finds papers and downloads PDFs to data/papers/
 ```
 
-Option B: Manually download PDFs
-- Go to parliament website
-- Download session papers to `data/papers/`
+**Note:** The scraper may need adjustments based on website structure. Manual download is often faster and more reliable.
 
-#### Step 2: Ingest Order Papers
+## Step 3: Ingest Data
+
+Once you have PDFs and videos:
+
+### Ingest Order Papers
 
 ```bash
-# Single file
+# Ingest a single PDF
 python scripts/ingest_order_paper.py data/papers/session_paper.pdf
 
-# All files in directory
+# Or ingest all PDFs from directory
 python scripts/ingest_order_paper.py data/papers/
 ```
 
-#### Step 3: Download YouTube Videos
+This will:
+- Parse PDF with Gemini Vision API
+- Extract speakers and agenda items
+- Save to database
+- Create speaker records
 
-Option A: Download with script
-```bash
-# Create URL list
-echo "https://www.youtube.com/watch?v=VIDEO_ID" > data/videos/urls.txt
+### Ingest Videos
 
-# Download
-python scripts/download_youtube_videos.py --list data/videos/urls.txt
-```
-
-Option B: Manually download
-- Use yt-dlp or browser
-- Save to `data/videos/`
-
-#### Step 4: Transcribe Videos
-
-Create `data/video_ingest_mapping.json`:
+First, create a mapping file `data/video_mapping.json`:
 ```json
 [
     {
-        "youtube_url": "https://www.youtube.com/watch?v=ABC123",
+        "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
         "chamber": "house",
         "session_date": "2024-01-15",
         "order_paper_pdf": "data/papers/session_paper.pdf"
@@ -106,12 +87,10 @@ Create `data/video_ingest_mapping.json`:
 
 Then ingest:
 ```bash
-python scripts/ingest_video.py --mapping data/video_ingest_mapping.json
+python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-## Start the Application
-
-Once data is ingested:
+## Step 4: Start Application
 
 ```bash
 # Start the API server
@@ -145,27 +124,6 @@ Try these questions in the chat interface:
 - "What topics were covered in recent sessions?"
 - "What entities are related to tax policy?"
 
-## Tips
-
-1. **Start small**: Ingest 1-2 videos first to test the pipeline
-2. **Use audio-only**: For faster downloads, use `--audio-only` flag
-3. **Check API quota**: Gemini has rate limits, start with smaller batches
-4. **Verify data**: After ingestion, check database:
-   ```bash
-   python -c "
-   from sqlalchemy import select
-   from models.video import Video
-   from app.dependencies import get_db_session
-   import asyncio
-
-   async def check():
-       async with get_db_session() as db:
-           result = await db.execute(select(Video))
-           print(f'Videos in DB: {len(result.scalars().all())}')
-   asyncio.run(check())
-   "
-   ```
-
 ## Troubleshooting
 
 ### "Module not found" errors
@@ -175,26 +133,67 @@ Make sure you're in the virtual environment:
 source venv/bin/activate
 ```
 
-### "Database connection failed"
-
-Check PostgreSQL is running:
-```bash
-docker-compose ps
-# Restart if needed
-docker-compose restart
-```
-
-### "API quota exceeded"
-
-Wait a few hours or check your Google Cloud billing:
-https://console.cloud.google.com/apis/library/generative-language-api
-
-### Scraper can't find papers
+### Scraper doesn't find papers
 
 The scraper is a template. You may need to:
 1. Check actual parliament website structure
-2. Update URL patterns in `scripts/scrape_session_papers.py`
-3. Or manually download PDFs
+2. Or manually download PDFs (often faster)
+3. The manual approach is recommended
+
+### Video download fails
+
+If YouTube downloads fail:
+1. Ensure `yt-dlp` is installed: `pip install yt-dlp`
+2. Check internet connectivity
+3. Verify URLs are valid
+4. Try just one video at a time first
+
+### Database connection failed
+
+```bash
+# Check PostgreSQL is running
+docker-compose ps
+
+# Restart if needed
+docker-compose restart
+
+# Check logs
+docker-compose logs postgres
+```
+
+### Gemini API issues
+
+- Check API key in `.env`
+- Verify quota and billing
+- Start with smaller files first
+- Check logs for specific error messages
+
+## What Each Step Does
+
+### Order Paper Ingestion
+1. Reads PDF file
+2. Sends to Gemini Vision API
+3. Extracts:
+   - Session title and date
+   - List of all speakers
+   - Agenda items and topics
+4. Saves to `order_papers` table
+5. Creates/updates speaker records
+
+### Video Ingestion
+1. Downloads YouTube video (or uses local file)
+2. Sends to Gemini Video API
+3. Transcribes with speaker attribution
+4. Extracts entities from transcript
+5. Saves to `videos` table
+6. Links to order papers if provided
+
+### Entity Extraction
+Automatically happens during video transcription:
+1. Identifies people, organizations, legislation
+2. Creates entity records
+3. Finds relationships between entities
+4. Builds knowledge graph
 
 ## Next Steps
 

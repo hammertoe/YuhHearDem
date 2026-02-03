@@ -4,11 +4,16 @@
 import argparse
 import hashlib
 import logging
+import sys
+import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import get_settings
 from models.order_paper import OrderPaper as OrderPaperModel
@@ -25,15 +30,15 @@ logger = logging.getLogger(__name__)
 class OrderPaperIngestor:
     """Ingests order papers into database"""
 
-    def __init__(self, db_session: AsyncSession, gemini_client: GeminiClient):
-        self.db = db_session
+    def __init__(self, db_engine, gemini_client: GeminiClient):
+        self.engine = db_engine
         self.client = gemini_client
         self.parser = OrderPaperParser(gemini_client=client)
 
     async def ingest_pdf(
         self,
         pdf_path: Path,
-        video_id: str | None = None,
+        video_id: Optional[str] = None,
         chamber: str = "house",
     ) -> dict:
         """
@@ -49,83 +54,89 @@ class OrderPaperIngestor:
         """
         logger.info(f"Ingesting: {pdf_path.name}")
 
-        # Check if already ingested
-        pdf_hash = self._calculate_hash(pdf_path)
-        existing = await self.db.execute(
-            select(OrderPaperModel).where(OrderPaperModel.pdf_hash == pdf_hash)
+        async_session_maker = async_sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
         )
-        if existing.scalar_one_or_none():
-            logger.info(f"Already ingested: {pdf_path.name}")
-            return {"status": "skipped", "reason": "already_exists"}
 
-        # Parse PDF
-        try:
-            parsed: ParsedOrderPaper = self.parser.parse(pdf_path)
-
-            logger.info(
-                f"Parsed {len(parsed.speakers)} speakers, {len(parsed.agenda_items)} agenda items"
+        async with async_session_maker() as db:
+            # Check if already ingested
+            pdf_hash = self._calculate_hash(pdf_path)
+            existing = await db.execute(
+                select(OrderPaperModel).where(OrderPaperModel.pdf_hash == pdf_hash)
             )
+            if existing.scalar_one_or_none():
+                logger.info(f"Already ingested: {pdf_path.name}")
+                return {"status": "skipped", "reason": "already_exists"}
 
-            # Get or create video record
-            video_uuid = None
-            if video_id:
-                video_uuid = await self._get_or_create_video(video_id, parsed, chamber)
+            # Parse PDF
+            try:
+                parsed: ParsedOrderPaper = self.parser.parse(pdf_path)
 
-            # Save to database
-            order_paper = OrderPaperModel(
-                video_id=video_uuid,
-                pdf_path=str(pdf_path),
-                pdf_hash=pdf_hash,
-                session_title=parsed.session_title,
-                session_date=datetime.combine(parsed.session_date, datetime.min.time()),
-                sitting_number=parsed.sitting_number,
-                chamber=chamber,
-                speakers=[
-                    {
-                        "name": s.name,
-                        "title": s.title,
-                        "role": s.role,
-                    }
-                    for s in (parsed.speakers or [])
-                ],
-                agenda_items=[
-                    {
-                        "topic_title": a.topic_title,
-                        "primary_speaker": a.primary_speaker,
-                        "description": a.description,
-                    }
-                    for a in (parsed.agenda_items or [])
-                ],
-            )
+                logger.info(
+                    f"Parsed {len(parsed.speakers)} speakers, {len(parsed.agenda_items)} agenda items"
+                )
 
-            self.db.add(order_paper)
-            await self.db.commit()
-            await self.db.refresh(order_paper)
+                # Get or create video record
+                video_uuid = None
+                if video_id:
+                    video_uuid = await self._get_or_create_video(db, video_id, parsed, chamber)
 
-            logger.info(f"Saved order paper: {order_paper.id}")
+                # Save to database
+                order_paper = OrderPaperModel(
+                    video_id=video_uuid,
+                    pdf_path=str(pdf_path),
+                    pdf_hash=pdf_hash,
+                    session_title=parsed.session_title,
+                    session_date=datetime.combine(parsed.session_date, datetime.min.time()),
+                    sitting_number=parsed.sitting_number,
+                    chamber=chamber,
+                    speakers=[
+                        {
+                            "name": s.name,
+                            "title": s.title,
+                            "role": s.role,
+                        }
+                        for s in (parsed.speakers or [])
+                    ],
+                    agenda_items=[
+                        {
+                            "topic_title": a.topic_title,
+                            "primary_speaker": a.primary_speaker,
+                            "description": a.description,
+                        }
+                        for a in (parsed.agenda_items or [])
+                    ],
+                )
 
-            # Create/update speakers
-            await self._sync_speakers(parsed.speakers)
+                db.add(order_paper)
+                await db.commit()
+                await db.refresh(order_paper)
 
-            return {
-                "status": "success",
-                "order_paper_id": str(order_paper.id),
-                "video_id": str(video_uuid) if video_uuid else None,
-            }
+                logger.info(f"Saved order paper: {order_paper.id}")
 
-        except Exception as e:
-            logger.error(f"Failed to ingest {pdf_path}: {e}")
-            await self.db.rollback()
-            return {"status": "error", "error": str(e)}
+                # Create/update speakers
+                await self._sync_speakers(db, parsed.speakers)
+
+                return {
+                    "status": "success",
+                    "order_paper_id": str(order_paper.id),
+                    "video_id": str(video_uuid) if video_uuid else None,
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to ingest {pdf_path}: {e}")
+                await db.rollback()
+                return {"status": "error", "error": str(e)}
 
     async def _get_or_create_video(
         self,
+        db: AsyncSession,
         youtube_id: str,
         parsed: ParsedOrderPaper,
         chamber: str,
-    ) -> str | None:
+    ) -> Optional[str]:
         """Get or create video record"""
-        result = await self.db.execute(select(Video).where(Video.youtube_id == youtube_id))
+        result = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
         video = result.scalar_one_or_none()
 
         if video:
@@ -141,13 +152,13 @@ class OrderPaperIngestor:
             transcript={},
         )
 
-        self.db.add(video)
-        await self.db.commit()
-        await self.db.refresh(video)
+        db.add(video)
+        await db.commit()
+        await db.refresh(video)
 
         return video.id
 
-    async def _sync_speakers(self, speakers: list):
+    async def _sync_speakers(self, db: AsyncSession, speakers: list):
         """Create or update speaker records"""
         if not speakers:
             return
@@ -157,7 +168,7 @@ class OrderPaperIngestor:
         matcher = SpeakerMatcher()
 
         for speaker_data in speakers:
-            result = await self.db.execute(select(Speaker).where(Speaker.name == speaker_data.name))
+            result = await db.execute(select(Speaker).where(Speaker.name == speaker_data.name))
             speaker = result.scalar_one_or_none()
 
             if not speaker:
@@ -167,9 +178,9 @@ class OrderPaperIngestor:
                     role=speaker_data.role,
                     canonical_name=matcher.normalize_name(speaker_data.name),
                 )
-                self.db.add(speaker)
+                db.add(speaker)
 
-        await self.db.commit()
+        await db.commit()
 
     def _calculate_hash(self, file_path: Path) -> str:
         """Calculate SHA256 hash of file"""
@@ -182,7 +193,7 @@ class OrderPaperIngestor:
     async def ingest_directory(
         self,
         pdf_dir: Path,
-        video_mapping: dict | None = None,
+        video_mapping: Optional[dict] = None,
         chamber: str = "house",
     ) -> list[dict]:
         """
@@ -200,13 +211,18 @@ class OrderPaperIngestor:
         logger.info(f"Found {len(pdf_files)} PDF files")
 
         results = []
-        for pdf_path in pdf_files:
-            video_id = None
-            if video_mapping and pdf_path.name in video_mapping:
-                video_id = video_mapping[pdf_path.name]
+        async_session_maker = async_sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
 
-            result = await self.ingest_pdf(pdf_path, video_id, chamber)
-            results.append({**result, "pdf_path": str(pdf_path)})
+        async with async_session_maker() as db:
+            for pdf_path in pdf_files:
+                video_id = None
+                if video_mapping and pdf_path.name in video_mapping:
+                    video_id = video_mapping[pdf_path.name]
+
+                result = await self.ingest_pdf(pdf_path, video_id, chamber)
+                results.append({**result, "pdf_path": str(pdf_path)})
 
         return results
 
@@ -238,39 +254,41 @@ async def main():
 
     settings = get_settings()
 
-    from google import genai
-
-    from app.dependencies import get_db_session
+    import google.generativeai as genai
 
     genai.configure(api_key=settings.google_api_key)
     client = GeminiClient()
 
-    async with get_db_session() as db:
-        ingestor = OrderPaperIngestor(db, client)
+    # Create database engine
+    from sqlalchemy.ext.asyncio import create_async_engine
 
-        if args.pdf_path.is_file():
-            result = await ingestor.ingest_pdf(args.pdf_path, args.video_id, args.chamber)
-            print(result)
-        elif args.pdf_path.is_dir():
-            video_mapping = {}
-            if args.video_mapping and args.video_mapping.exists():
-                import json
+    engine = create_async_engine(settings.database_url)
 
-                video_mapping = json.loads(args.video_mapping.read_text())
+    ingestor = OrderPaperIngestor(engine, client)
 
-            results = await ingestor.ingest_directory(args.pdf_path, video_mapping, args.chamber)
+    if args.pdf_path.is_file():
+        result = await ingestor.ingest_pdf(args.pdf_path, args.video_id, args.chamber)
+        print(result)
+    elif args.pdf_path.is_dir():
+        video_mapping = {}
+        if args.video_mapping and args.video_mapping.exists():
+            import json
 
-            success = sum(1 for r in results if r["status"] == "success")
-            skipped = sum(1 for r in results if r["status"] == "skipped")
-            failed = sum(1 for r in results if r["status"] == "error")
+            video_mapping = json.loads(args.video_mapping.read_text())
 
-            print("\nResults:")
-            print(f"  Success: {success}")
-            print(f"  Skipped: {skipped}")
-            print(f"  Failed: {failed}")
+        results = await ingestor.ingest_directory(args.pdf_path, video_mapping, args.chamber)
+
+        success = sum(1 for r in results if r["status"] == "success")
+        skipped = sum(1 for r in results if r["status"] == "skipped")
+        failed = sum(1 for r in results if r["status"] == "error")
+
+        print(f"\nResults:")
+        print(f"  Success: {success}")
+        print(f"  Skipped: {skipped}")
+        print(f"  Failed: {failed}")
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(main())
