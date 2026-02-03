@@ -96,6 +96,31 @@ async def test_query_handles_function_calls_from_response():
 
 
 @pytest.mark.anyio
+async def test_query_empty_response_returns_fallback():
+    """Empty model response should yield a fallback answer, not an error."""
+
+    class FakeResponse:
+        def __init__(self, candidates=None, text=None):
+            self.candidates = candidates or []
+            self.text = text
+
+    mock_generate = AsyncMock(return_value=FakeResponse(candidates=[], text=None))
+    mock_models = Mock(generate_content=mock_generate)
+    mock_aio = Mock(models=mock_models)
+    mock_client = Mock(aio=mock_aio)
+    gemini_client = Mock(client=mock_client)
+
+    store = KnowledgeGraphStore()
+    agent = ParliamentaryAgent(gemini_client=gemini_client, kg_store=store)
+    agent.tools.get_tools_dict = Mock(return_value={"function_declarations": [], "tools": {}})
+
+    result = await agent.query(db=Mock(), user_query="last session", max_iterations=1)
+
+    assert result["success"] is True
+    assert "couldn't" in result["answer"].lower() or "could not" in result["answer"].lower()
+
+
+@pytest.mark.anyio
 async def test_query_uses_async_gemini_client():
     """Ensure agent uses async Gemini client for generate_content."""
     mock_generate = AsyncMock(return_value=Mock(text="function_calls"))

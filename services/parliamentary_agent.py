@@ -102,6 +102,18 @@ class ParliamentaryAgent:
                     "iteration": iteration,
                 }
             else:
+                if result.get("error") == "Response format not recognized":
+                    return {
+                        "success": True,
+                        "answer": (
+                            "I couldn't find enough information to answer that right now. "
+                            "Please try rephrasing or ask about a specific session, speaker, or topic."
+                        ),
+                        "entities": entities_found,
+                        "context": context,
+                        "iteration": iteration,
+                    }
+
                 # Error occurred
                 return {
                     "success": False,
