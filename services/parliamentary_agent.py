@@ -154,14 +154,23 @@ Begin your analysis."""
         """Parse Gemini response into structured format."""
         if "function_calls" in response_text:
             return self._parse_function_calls(response_text, user_query)
-        else:
+
+        if response_text.strip():
             return {
-                "success": False,
-                "error": "Response format not recognized",
-                "answer": None,
+                "success": True,
+                "answer": response_text.strip(),
                 "context": [],
                 "iteration": 0,
+                "tool_results": [],
             }
+
+        return {
+            "success": False,
+            "error": "Response format not recognized",
+            "answer": None,
+            "context": [],
+            "iteration": 0,
+        }
 
     def _parse_function_calls(self, response_text: str, user_query: str) -> dict:
         """Parse function call blocks from response."""

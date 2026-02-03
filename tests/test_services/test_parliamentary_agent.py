@@ -19,6 +19,18 @@ def test_build_agent_prompt_includes_iteration_info():
     assert "Current iteration: 1/10" in prompt
 
 
+def test_parse_agent_response_accepts_plain_text():
+    """Agent should accept plain text responses when no tool calls exist."""
+    mock_client = Mock()
+    store = KnowledgeGraphStore()
+    agent = ParliamentaryAgent(gemini_client=mock_client, kg_store=store)
+
+    result = agent._parse_agent_response("Hello there", "hi")
+
+    assert result["success"] is True
+    assert result["answer"] == "Hello there"
+
+
 @pytest.mark.anyio
 async def test_query_uses_async_gemini_client():
     """Ensure agent uses async Gemini client for generate_content."""
