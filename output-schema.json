@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "session_title": {"type": "string"},
+    "date": {"type": "string"},
+    "chamber": {"type": "string"},
+    "video_url": {"type": "string"},
+    "video_title": {"type": "string"},
+    "agenda_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic_title": {"type": "string"},
+          "bill_id": {"type": "string"},
+          "speech_blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "speaker_name": {"type": "string"},
+                "speaker_id": {"type": "string"},
+                "sentences": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "start_time": {"type": "string"},
+                      "text": {"type": "string"}
+                    },
+                    "required": ["start_time", "text"]
+                  }
+                }
+              },
+              "required": ["speaker_name", "sentences"]
+            }
+          }
+        },
+        "required": ["topic_title", "speech_blocks"]
+      }
+    }
+  },
+  "required": ["session_title", "agenda_items"]
+}

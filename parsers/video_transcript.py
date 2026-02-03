@@ -12,7 +12,7 @@ from parsers.models import OrderPaper
 from parsers.transcript_models import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
 from models.speaker import Speaker
 from services.gemini import GeminiClient
-from fuzz import fuzz
+from thefuzz import fuzz
 
 
 class VideoTranscriptionParser:
@@ -356,11 +356,10 @@ Return the complete transcript in the specified JSON structure."""
         # No match found - generate new ID
         new_id = self._generate_canonical_id(speaker_name)
         new_speaker = Speaker(
-            id=new_id,
+            canonical_id=new_id,
             name=speaker_name,
             title=None,
             role=None,
-            party=None,
         )
 
         # IMPORTANT: Add to mapping immediately so subsequent encounters find it.
@@ -451,6 +450,7 @@ Return the complete transcript in the specified JSON structure."""
         return SessionTranscript(
             session_title=response["session_title"],
             date=date_obj,
+            chamber=response.get("chamber", "house"),
             agenda_items=agenda_items,
         )
 
@@ -800,6 +800,7 @@ Return the complete transcript in the specified JSON structure."""
         return SessionTranscript(
             session_title=transcript.session_title,
             date=transcript.date,
+            chamber=transcript.chamber,
             agenda_items=filtered_items,
         )
 
@@ -879,6 +880,7 @@ Return the complete transcript in the specified JSON structure."""
             transcript = SessionTranscript(
                 session_title=transcript.session_title,
                 date=transcript.date,
+                chamber=transcript.chamber,
                 agenda_items=adjusted_items,
             )
         else:
@@ -949,5 +951,6 @@ Return the complete transcript in the specified JSON structure."""
         return SessionTranscript(
             session_title=base.session_title,
             date=base.date,
+            chamber=base.chamber,
             agenda_items=merged_items,
         )
