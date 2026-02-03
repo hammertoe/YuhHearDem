@@ -2,8 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
-
 from services import gemini as gemini_module
 
 

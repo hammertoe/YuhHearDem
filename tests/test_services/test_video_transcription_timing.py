@@ -16,6 +16,10 @@ from pathlib import Path
 import pytest
 from pytest import fixture
 
+from parsers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
+from parsers.video_transcript import VideoTranscriptionParser
+from services.gemini import GeminiClient
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -25,10 +29,6 @@ try:
         load_dotenv(env_path)
 except ImportError:
     pass  # python-dotenv not installed, skip
-
-from parsers.models import OrderPaper, OrderPaperSpeaker, AgendaItem
-from parsers.video_transcript import VideoTranscriptionParser
-from services.gemini import GeminiClient
 
 
 TEST_VIDEO_URL = "https://www.youtube.com/watch?v=P6cUJb9xqIs"
@@ -253,7 +253,7 @@ class TestVideoTranscriptionTiming:
             )
 
         # Print timing analysis
-        print(f"\nTiming Analysis:")
+        print("\nTiming Analysis:")
         print(f"  Total sentences: {len(all_timestamps)}")
         print(f"  First timestamp: {all_timestamps[0][1]} ({all_timestamps[0][0] / 1000:.3f}s)")
         print(f"  Last timestamp: {all_timestamps[-1][1]} ({all_timestamps[-1][0] / 1000:.3f}s)")
@@ -326,7 +326,7 @@ class TestVideoTranscriptionTiming:
         segment_start_ms = segment_start * 1000
         segment_end_ms = segment_end * 1000
 
-        print(f"\nMid-video Timing Verification:")
+        print("\nMid-video Timing Verification:")
         print(f"  Expected range: {segment_start}s - {segment_end}s")
         print(f"  First timestamp: {all_timestamps[0][1]} ({first_time_ms / 1000:.3f}s)")
         print(f"  Last timestamp: {all_timestamps[-1][1]} ({all_timestamps[-1][0] / 1000:.3f}s)")
@@ -367,11 +367,11 @@ class TestVideoTranscriptionTiming:
         segment_end = 300  # 5 minutes
 
         print(f"\n{'=' * 80}")
-        print(f"5-MINUTE DRIFT TEST")
+        print("5-MINUTE DRIFT TEST")
         print(f"{'=' * 80}")
         print(f"Transcribing video segment: {segment_start}s to {segment_end}s (5 minutes)")
         print(f"Video URL: {TEST_VIDEO_URL}")
-        print(f"This will take a few minutes due to the video length...")
+        print("This will take a few minutes due to the video length...")
 
         # Transcribe the segment
         speaker_id_mapping = {}
@@ -401,7 +401,7 @@ class TestVideoTranscriptionTiming:
 
         # Analyze timestamps across the 5-minute window
         print(f"\n{'=' * 80}")
-        print(f"DRIFT ANALYSIS - Timestamp Distribution")
+        print("DRIFT ANALYSIS - Timestamp Distribution")
         print(f"{'=' * 80}")
 
         # Divide into early, mid, and late sections
@@ -414,24 +414,24 @@ class TestVideoTranscriptionTiming:
         mid_timestamps = [t for t in all_timestamps if mid_start <= t[0] <= mid_end]
         late_timestamps = [t for t in all_timestamps if t[0] > late_start]
 
-        print(f"\nTimestamp Distribution:")
+        print("\nTimestamp Distribution:")
         print(f"  Early (0-2 min):     {len(early_timestamps)} sentences")
         print(f"  Mid (2-3.5 min):     {len(mid_timestamps)} sentences")
         print(f"  Late (3.5-5 min):    {len(late_timestamps)} sentences")
         print(f"  Total:               {len(all_timestamps)} sentences")
 
         if early_timestamps:
-            print(f"\nEarly Section (0-2 min):")
+            print("\nEarly Section (0-2 min):")
             print(f"  First: {early_timestamps[0][1]} - {early_timestamps[0][2][:60]}...")
             print(f"  Last:  {early_timestamps[-1][1]} - {early_timestamps[-1][2][:60]}...")
 
         if mid_timestamps:
-            print(f"\nMid Section (2-3.5 min):")
+            print("\nMid Section (2-3.5 min):")
             print(f"  First: {mid_timestamps[0][1]} - {mid_timestamps[0][2][:60]}...")
             print(f"  Last:  {mid_timestamps[-1][1]} - {mid_timestamps[-1][2][:60]}...")
 
         if late_timestamps:
-            print(f"\nLate Section (3.5-5 min) - CHECK FOR DRIFT HERE:")
+            print("\nLate Section (3.5-5 min) - CHECK FOR DRIFT HERE:")
             print(f"  First: {late_timestamps[0][1]} - {late_timestamps[0][2][:60]}...")
             print(f"  Last:  {late_timestamps[-1][1]} - {late_timestamps[-1][2][:60]}...")
 
@@ -445,7 +445,7 @@ class TestVideoTranscriptionTiming:
             max_spacing = max(spacings)
             min_spacing = min(spacings)
 
-            print(f"\nTiming Statistics:")
+            print("\nTiming Statistics:")
             print(f"  Average spacing: {avg_spacing / 1000:.3f}s")
             print(f"  Min spacing:     {min_spacing / 1000:.3f}s")
             print(f"  Max spacing:     {max_spacing / 1000:.3f}s")
@@ -455,7 +455,7 @@ class TestVideoTranscriptionTiming:
 
         # Drift detection - compare late timestamps to expected range
         print(f"\n{'=' * 80}")
-        print(f"DRIFT DETECTION")
+        print("DRIFT DETECTION")
         print(f"{'=' * 80}")
 
         if late_timestamps:
@@ -471,19 +471,17 @@ class TestVideoTranscriptionTiming:
             )
 
             # Check if late timestamps are in expected range
-            drift_detected = False
             if first_late_time < expected_min_late - 30000:  # More than 30s early
-                drift_detected = True
-                print(f"\n⚠️  POTENTIAL DRIFT DETECTED!")
+                print("\n⚠️  POTENTIAL DRIFT DETECTED!")
                 print(f"   Expected first late timestamp around {expected_min_late / 1000:.1f}s")
                 print(f"   Got: {first_late_time / 1000:.3f}s")
                 print(f"   Difference: {(expected_min_late - first_late_time) / 1000:.1f}s")
             else:
-                print(f"\n✓ Late timestamps appear to be in correct range (no obvious drift)")
+                print("\n✓ Late timestamps appear to be in correct range (no obvious drift)")
 
         # Summary
         print(f"\n{'=' * 80}")
-        print(f"SUMMARY")
+        print("SUMMARY")
         print(f"{'=' * 80}")
         print(f"Total sentences transcribed: {len(all_timestamps)}")
         print(
@@ -529,11 +527,11 @@ class TestVideoTranscriptionTiming:
         segment_end = 600  # 10 minutes
 
         print(f"\n{'=' * 80}")
-        print(f"10-MINUTE DRIFT TEST")
+        print("10-MINUTE DRIFT TEST")
         print(f"{'=' * 80}")
         print(f"Transcribing video segment: {segment_start}s to {segment_end}s (10 minutes)")
         print(f"Video URL: {TEST_VIDEO_URL}")
-        print(f"This will take several minutes due to the video length...")
+        print("This will take several minutes due to the video length...")
 
         # Transcribe the segment
         speaker_id_mapping = {}
@@ -563,7 +561,7 @@ class TestVideoTranscriptionTiming:
 
         # Analyze timestamps across the 10-minute window
         print(f"\n{'=' * 80}")
-        print(f"DRIFT ANALYSIS - Timestamp Distribution")
+        print("DRIFT ANALYSIS - Timestamp Distribution")
         print(f"{'=' * 80}")
 
         # Divide into early, mid, and late sections
@@ -576,24 +574,24 @@ class TestVideoTranscriptionTiming:
         mid_timestamps = [t for t in all_timestamps if mid_start <= t[0] <= mid_end]
         late_timestamps = [t for t in all_timestamps if t[0] > late_start]
 
-        print(f"\nTimestamp Distribution:")
+        print("\nTimestamp Distribution:")
         print(f"  Early (0-3 min):    {len(early_timestamps)} sentences")
         print(f"  Mid (4-6 min):      {len(mid_timestamps)} sentences")
         print(f"  Late (8-10 min):    {len(late_timestamps)} sentences")
         print(f"  Total:              {len(all_timestamps)} sentences")
 
         if early_timestamps:
-            print(f"\nEarly Section (0-3 min):")
+            print("\nEarly Section (0-3 min):")
             print(f"  First: {early_timestamps[0][1]} - {early_timestamps[0][2][:60]}...")
             print(f"  Last:  {early_timestamps[-1][1]} - {early_timestamps[-1][2][:60]}...")
 
         if mid_timestamps:
-            print(f"\nMid Section (4-6 min):")
+            print("\nMid Section (4-6 min):")
             print(f"  First: {mid_timestamps[0][1]} - {mid_timestamps[0][2][:60]}...")
             print(f"  Last:  {mid_timestamps[-1][1]} - {mid_timestamps[-1][2][:60]}...")
 
         if late_timestamps:
-            print(f"\nLate Section (8-10 min) - CHECK FOR DRIFT HERE:")
+            print("\nLate Section (8-10 min) - CHECK FOR DRIFT HERE:")
             print(f"  First: {late_timestamps[0][1]} - {late_timestamps[0][2][:60]}...")
             print(f"  Last:  {late_timestamps[-1][1]} - {late_timestamps[-1][2][:60]}...")
 
@@ -607,7 +605,7 @@ class TestVideoTranscriptionTiming:
             max_spacing = max(spacings)
             min_spacing = min(spacings)
 
-            print(f"\nTiming Statistics:")
+            print("\nTiming Statistics:")
             print(f"  Average spacing: {avg_spacing / 1000:.3f}s")
             print(f"  Min spacing:     {min_spacing / 1000:.3f}s")
             print(f"  Max spacing:     {max_spacing / 1000:.3f}s")
@@ -617,7 +615,7 @@ class TestVideoTranscriptionTiming:
 
         # Drift detection - compare late timestamps to expected range
         print(f"\n{'=' * 80}")
-        print(f"DRIFT DETECTION")
+        print("DRIFT DETECTION")
         print(f"{'=' * 80}")
 
         if late_timestamps:
@@ -634,19 +632,17 @@ class TestVideoTranscriptionTiming:
 
             # Check if late timestamps are in expected range
             # If they're significantly off (e.g., showing 200s when it should be 500s), that's drift
-            drift_detected = False
             if first_late_time < expected_min_late - 30000:  # More than 30s early
-                drift_detected = True
-                print(f"\n⚠️  POTENTIAL DRIFT DETECTED!")
+                print("\n⚠️  POTENTIAL DRIFT DETECTED!")
                 print(f"   Expected first late timestamp around {expected_min_late / 1000:.0f}s")
                 print(f"   Got: {first_late_time / 1000:.3f}s")
                 print(f"   Difference: {(expected_min_late - first_late_time) / 1000:.1f}s")
             else:
-                print(f"\n✓ Late timestamps appear to be in correct range (no obvious drift)")
+                print("\n✓ Late timestamps appear to be in correct range (no obvious drift)")
 
         # Summary
         print(f"\n{'=' * 80}")
-        print(f"SUMMARY")
+        print("SUMMARY")
         print(f"{'=' * 80}")
         print(f"Total sentences transcribed: {len(all_timestamps)}")
         print(
@@ -675,11 +671,11 @@ class TestVideoTranscriptionTiming:
             )
 
         # Check timestamps are within expected bounds
-        for time_ms, time_str, text in all_timestamps:
+        for time_ms, time_str, _text in all_timestamps:
             assert segment_start * 1000 - 10000 <= time_ms <= segment_end * 1000 + 10000, (
                 f"Timestamp {time_str} outside expected range"
             )
 
         print(f"\n{'=' * 80}")
-        print(f"Test completed - review output above for drift issues")
+        print("Test completed - review output above for drift issues")
         print(f"{'=' * 80}")

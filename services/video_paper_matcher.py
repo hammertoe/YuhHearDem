@@ -8,14 +8,11 @@ Automatically associates YouTube videos with order papers based on:
 Only flags ambiguous cases (multiple papers on same date, missing data) for manual review.
 """
 
-import re
 import logging
+import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
-from dataclasses import dataclass
-from pathlib import Path
-
-from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +81,6 @@ class TitlePatternMatcher:
         "feb": 2,
         "mar": 3,
         "apr": 4,
-        "may": 5,
         "jun": 6,
         "jul": 7,
         "aug": 8,
@@ -97,8 +93,6 @@ class TitlePatternMatcher:
     @classmethod
     def extract_session_date(cls, title: str) -> Optional[date]:
         """Extract session date from video title."""
-        title_lower = title.lower()
-
         for pattern in cls.DATE_PATTERNS:
             match = re.search(pattern, title, re.IGNORECASE)
             if match:

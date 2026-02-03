@@ -659,7 +659,7 @@ IMPORTANT:
 
     def _normalize_entity_type(self, entity_type: Any) -> str:
         if hasattr(entity_type, "value"):
-            return str(getattr(entity_type, "value"))
+            return str(entity_type.value)
         return str(entity_type)
 
     def _extract_speaker_entities(self, transcript: SessionTranscript) -> list[Entity]:

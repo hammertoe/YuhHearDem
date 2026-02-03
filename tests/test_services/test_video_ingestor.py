@@ -5,10 +5,14 @@ from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy import select
 
-from models.video import Video as VideoModel
 from models.entity import Entity
+from models.mention import Mention
+from models.relationship import Relationship
+from models.speaker import Speaker
 from models.transcript_segment import TranscriptSegment
+from models.video import Video as VideoModel
 from parsers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
 from parsers.transcript_models import (
     Sentence,
@@ -17,13 +21,9 @@ from parsers.transcript_models import (
     TranscriptAgendaItem,
 )
 from scripts.ingest_video import VideoIngestor
+from services.entity_extractor import ExtractionResult
 from services.gemini import GeminiClient
 from services.video_transcription import VideoTranscriptionService
-from services.entity_extractor import ExtractionResult
-from sqlalchemy import select
-from models.mention import Mention
-from models.relationship import Relationship
-from models.speaker import Speaker
 
 
 class StubTranscriptionService:

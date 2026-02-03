@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, Mock
 
-from models.session import Session  # noqa: F401
-
 import pytest
 
 

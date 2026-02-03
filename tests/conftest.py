@@ -99,8 +99,8 @@ async def client(override_get_db):
     from asgi_lifespan import LifespanManager
     from httpx import ASGITransport, AsyncClient
 
-    from app.main import app
     from app.dependencies import get_db_session
+    from app.main import app
 
     app.dependency_overrides[get_db_session] = override_get_db
 

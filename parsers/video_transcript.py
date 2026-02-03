@@ -8,11 +8,12 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from thefuzz import fuzz
+
+from models.speaker import Speaker
 from parsers.models import OrderPaper
 from parsers.transcript_models import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
-from models.speaker import Speaker
 from services.gemini import GeminiClient
-from thefuzz import fuzz
 
 
 class VideoTranscriptionParser:
