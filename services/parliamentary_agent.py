@@ -13,7 +13,7 @@ class ParliamentaryAgent:
 
     def __init__(self, gemini_client: GeminiClient, kg_store: KnowledgeGraphStore):
         """Initialize complete agent.
-        
+
         Args:
             gemini_client: Gemini client for function calling
             kg_store: Knowledge graph storage layer
@@ -27,7 +27,7 @@ class ParliamentaryAgent:
         db: AsyncSession,
         user_query: str,
         max_iterations: int = 10,
-    ) -> Dict:
+    ) -> dict:
         """
         Process a natural language query using multi-hop agentic reasoning.
 
@@ -52,8 +52,11 @@ class ParliamentaryAgent:
                 model="gemini-2-flash-preview",
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    tools=[types.FunctionDeclaration(**decl) for decl in tools_dict["function_declarations"]]
-                )
+                    tools=[
+                        types.FunctionDeclaration(**decl)
+                        for decl in tools_dict["function_declarations"]
+                    ]
+                ),
             )
 
             response_text = response.text
@@ -75,21 +78,25 @@ class ParliamentaryAgent:
                     "iteration": iteration,
                 }
 
-    def _build_agent_prompt(self, user_query: str, context: List[str], iteration: int) -> str:
+    def _build_agent_prompt(
+        self, user_query: str, context: List[str], iteration: int
+    ) -> str:
         """Build prompt for agent iteration."""
         context_info = ""
         if iteration > 1:
             context_info = f"\n\nPrevious research:"
 
-            tools_info = "\nAvailable tools:\n" + "\n".join([
-            f"  - find_entity(name, type): Search entities by name or type",
-            f"  - get_relationships(entity_id, direction): Get entity connections",
-            f"  - get_mentions(entity_id, video_id, limit): Get citations with timestamps",
-            f"  - get_entity_details(entity_id): Full entity metadata",
-            f"  - search_by_date_range(date_from, date_to, chamber): Find sessions",
-            f"  - search_by_speaker(speaker_id): Find all speeches",
-        f"  - search_semantic(query_text, limit): Semantic search",
-        ])
+            tools_info = "\nAvailable tools:\n" + "\n".join(
+                [
+                    f"  - find_entity(name, type): Search entities by name or type",
+                    f"  - get_relationships(entity_id, direction): Get entity connections",
+                    f"  - get_mentions(entity_id, video_id, limit): Get citations with timestamps",
+                    f"  - get_entity_details(entity_id): Full entity metadata",
+                    f"  - search_by_date_range(date_from, date_to, chamber): Find sessions",
+                    f"  - search_by_speaker(speaker_id): Find all speeches",
+                    f"  - search_semantic(query_text, limit): Semantic search",
+                ]
+            )
 
         return f"""You are an AI assistant for the Barbados Parliament knowledge graph. Use the available tools to answer the user's question comprehensively.
 
@@ -195,7 +202,9 @@ Begin your analysis."""
                 entity = tool_result["data"].get("entities", [{}])
                 context.append(f"Found entity: {entity.get('name', 'Unknown')}")
                 if entity:
-                    context.append(f"  Entity type: {entity.get('entity_type', 'Unknown')}")
+                    context.append(
+                        f"  Entity type: {entity.get('entity_type', 'Unknown')}"
+                    )
 
             elif tool == "get_relationships" and tool_result["data"]:
                 relationships = tool_result["data"].get("relationships", [])
@@ -207,7 +216,9 @@ Begin your analysis."""
 
         return context
 
-    def _generate_answer_from_results(self, tool_results: List[Dict], user_query: str) -> str:
+    def _generate_answer_from_results(
+        self, tool_results: List[Dict], user_query: str
+    ) -> str:
         """Generate final answer from tool results."""
         if not tool_results:
             return "I couldn't find relevant information to answer your question. The knowledge graph may need more data. Please try rephrasing or check that videos have been processed."
@@ -225,33 +236,49 @@ Begin your analysis."""
             if tool == "find_entity" and data.get("entities"):
                 entity = data.get("entities", [{}])
                 if entity:
-                    entities_mentioned.append(f"- {entity['name']} (Type: {entity.get('entity_type', 'Unknown')})")
+                    entities_mentioned.append(
+                        f"- {entity['name']} (Type: {entity.get('entity_type', 'Unknown')})"
+                    )
 
             elif tool == "get_relationships" and data.get("relationships"):
                 relationships = data.get("relationships", [])
                 for rel in relationships:
-                    relationships_found.append(f"- Relationship between {rel.get('source_id', 'Unknown')} and {rel.get('target_id', 'Unknown')}")
+                    relationships_found.append(
+                        f"- Relationship between {rel.get('source_id', 'Unknown')} and {rel.get('target_id', 'Unknown')}"
+                    )
 
             elif tool == "get_mentions" and data.get("mentions"):
                 mentions = data.get("mentions", [])
                 for m in mentions:
                     timestamp = m.get("timestamp", "0")
                     if timestamp:
-                        mentions_with_timestamps.append(f"- Mention at {timestamp}s ({m.get('context', '')})")
+                        mentions_with_timestamps.append(
+                            f"- Mention at {timestamp}s ({m.get('context', '')})"
+                        )
 
         if not entities_mentioned and not relationships_found:
-            answer_parts.append("No specific entities or relationships found in the knowledge graph for your query.")
+            answer_parts.append(
+                "No specific entities or relationships found in the knowledge graph for your query."
+            )
         elif not entities_mentioned:
-            answer_parts.append(f"I found the following entities: {', '.join(entities_mentioned)}. Try asking about these directly.")
+            answer_parts.append(
+                f"I found the following entities: {', '.join(entities_mentioned)}. Try asking about these directly."
+            )
         elif relationships_found:
-            answer_parts.append(f"I found {len(relationships_found)} relationships between entities.")
+            answer_parts.append(
+                f"I found {len(relationships_found)} relationships between entities."
+            )
 
         if mentions_with_timestamps:
             answer_parts.append("\n**Citations:**")
             for m in mentions_with_timestamps[:5]:
-                answer_parts.append(f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)")
+                answer_parts.append(
+                    f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)"
+                )
 
-        answer_parts.append("\n\nNote: For more detailed information about any entity, use the get_entity_details tool.")
+        answer_parts.append(
+            "\n\nNote: For more detailed information about any entity, use the get_entity_details tool."
+        )
 
         return "\n\n".join(answer_parts)
 
@@ -278,17 +305,21 @@ Begin your analysis."""
             if cite_type == "mention" and citation.get("timestamp"):
                 add_section(f"Citation at {citation.get('timestamp', '0')}s")
                 if citation.get("context"):
-                    add_section(f"Context: \"{citation.get('context', '')}\"")
+                    add_section(f'Context: "{citation.get("context", "")}"')
                     if citation.get("video_id"):
-                        add_section(f"Source: https://youtube.com/watch?v={citation.get('video_id', '')}")
+                        add_section(
+                            f"Source: https://youtube.com/watch?v={citation.get('video_id', '')}"
+                        )
             elif cite_type == "relationship":
                 source_entity_id = citation.get("source_id", "Unknown")
                 target_entity_id = citation.get("target_id", "Unknown")
                 relation = citation.get("relation_type", "Unknown")
-                add_section(f"Relationship: {source_entity_id} → {target_entity_id} ({relation})")
+                add_section(
+                    f"Relationship: {source_entity_id} → {target_entity_id} ({relation})"
+                )
 
         if citation.get("evidence"):
-            add_section(f"\"{citation.get('evidence', '')}\"")
+            add_section(f'"{citation.get("evidence", "")}"')
 
         sections.append("\n")
 
