@@ -211,7 +211,7 @@ class VideoPaperMatchingCLI:
         logger.info("Commands: [y]es confirm, [n]o skip, [s]how candidates, [q]uit")
         logger.info("=" * 80 + "\n")
 
-        async with AsyncSessionLocal() as db:
+        async for db in get_db_session():
             # Load order papers
             order_papers_result = await db.execute(select(OrderPaper))
             order_papers = order_papers_result.scalars().all()
@@ -288,7 +288,15 @@ class VideoPaperMatchingCLI:
                         )
 
                         if not self.dry_run:
-                            video.order_paper_id = paper_id
+                            # Update order paper to reference this video
+                            update_result = await db.execute(
+                                select(OrderPaper).where(OrderPaper.id == paper_id)
+                            )
+                            paper = update_result.scalar_one_or_none()
+                            if paper:
+                                paper.video_id = video.id
+
+                        if not self.dry_run:
                             await db.commit()
                             print(f"✓ CONFIRMED match to Order Paper {paper_id}")
                         else:
@@ -303,24 +311,6 @@ class VideoPaperMatchingCLI:
                             f"\nCandidates shown above. Use 1-{len(result.all_candidates)} to select"
                         )
                         continue
-                    elif choice.isdigit() and result.all_candidates:
-                        idx = int(choice) - 1
-                        if 0 <= idx < len(result.all_candidates):
-                            selected_paper = result.all_candidates[idx][1]
-                            paper_id = (
-                                selected_paper.id
-                                if hasattr(selected_paper, "id")
-                                else selected_paper.get("id")
-                            )
-
-                            if not self.dry_run:
-                                video.order_paper_id = paper_id
-                                await db.commit()
-                                print(f"✓ CONFIRMED match to Order Paper {paper_id}")
-                            else:
-                                print(f"[DRY RUN] Would confirm match to Order Paper {paper_id}")
-                            confirmed += 1
-                            break
                     else:
                         print("Invalid choice. Use: y (yes), n (no), s (show), q (quit), or number")
 
