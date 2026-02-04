@@ -64,7 +64,6 @@ scripts/
 # Data
 data/
 processed/
-storage/
 *.csv
 *.json
 *.sqlite
