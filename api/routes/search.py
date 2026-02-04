@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/search", tags=["Search"])
 @router.get("/", response_model=dict)
 async def search(
     db: AsyncSession = Depends(get_db_session),
-    query: str = Query(..., description="Search query"),
+    query_text: str = Query(..., description="Search query", alias="query"),
     type: str | None = Query(
         "all", description="Search type: 'all', 'entities', 'transcripts', 'speakers'"
     ),
@@ -43,13 +43,13 @@ async def search(
 
         from models.entity import Entity
 
-        query = select(Entity)
+        select_stmt = select(Entity)
 
-        if query:
-            like_pattern = f"%{query}%"
-            query = query.where(Entity.name.ilike(like_pattern))
+        if query_text:
+            like_pattern = f"%{query_text}%"
+            select_stmt = select_stmt.where(Entity.name.ilike(like_pattern))
 
-        result = await db.execute(query.limit(limit))
+        result = await db.execute(select_stmt.limit(limit))
         entities = result.scalars().all()
 
         results["entities"] = [
@@ -70,16 +70,16 @@ async def search(
 
         from models.video import Video
 
-        query = select(Video)
+        select_stmt = select(Video)
 
-        if query:
-            like_pattern = f"%{query}%"
-            query = query.where(Video.title.ilike(like_pattern))
+        if query_text:
+            like_pattern = f"%{query_text}%"
+            select_stmt = select_stmt.where(Video.title.ilike(like_pattern))
 
         if chamber:
-            query = query.where(Video.chamber == chamber)
+            select_stmt = select_stmt.where(Video.chamber == chamber)
 
-        result = await db.execute(query.limit(limit))
+        result = await db.execute(select_stmt.limit(limit))
         videos = result.scalars().all()
 
         results["transcripts"] = [
@@ -97,16 +97,16 @@ async def search(
 
         from models.speaker import Speaker
 
-        query = select(Speaker)
+        select_stmt = select(Speaker)
 
-        if query:
-            like_pattern = f"%{query}%"
-            query = query.where(Speaker.name.ilike(like_pattern))
+        if query_text:
+            like_pattern = f"%{query_text}%"
+            select_stmt = select_stmt.where(Speaker.name.ilike(like_pattern))
 
         if chamber:
-            query = query.where(Speaker.chamber == chamber)
+            select_stmt = select_stmt.where(Speaker.chamber == chamber)
 
-        result = await db.execute(query.limit(limit))
+        result = await db.execute(select_stmt.limit(limit))
         speakers = result.scalars().all()
 
         results["speakers"] = [
@@ -126,7 +126,7 @@ async def search(
 @router.get("/entities", response_model=dict)
 async def search_entities(
     db: AsyncSession = Depends(get_db_session),
-    query: str = Query(..., description="Search query"),
+    query_text: str = Query(..., description="Search query", alias="query"),
     entity_type: str | None = Query(None, description="Filter by entity type"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):
@@ -146,16 +146,16 @@ async def search_entities(
 
     from models.entity import Entity
 
-    query = select(Entity)
+    select_stmt = select(Entity)
 
-    if query:
-        like_pattern = f"%{query}%"
-        query = query.where(Entity.name.ilike(like_pattern))
+    if query_text:
+        like_pattern = f"%{query_text}%"
+        select_stmt = select_stmt.where(Entity.name.ilike(like_pattern))
 
     if entity_type:
-        query = query.where(Entity.entity_type == entity_type)
+        select_stmt = select_stmt.where(Entity.entity_type == entity_type)
 
-    result = await db.execute(query.limit(limit))
+    result = await db.execute(select_stmt.limit(limit))
     entities = result.scalars().all()
 
     return {
@@ -177,7 +177,7 @@ async def search_entities(
 @router.get("/speakers", response_model=dict)
 async def search_speakers(
     db: AsyncSession = Depends(get_db_session),
-    query: str = Query(..., description="Search query"),
+    query_text: str = Query(..., description="Search query", alias="query"),
     chamber: str | None = Query(None, description="Filter by chamber"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
 ):
@@ -197,16 +197,16 @@ async def search_speakers(
 
     from models.speaker import Speaker
 
-    query = select(Speaker)
+    select_stmt = select(Speaker)
 
-    if query:
-        like_pattern = f"%{query}%"
-        query = query.where(Speaker.name.ilike(like_pattern))
+    if query_text:
+        like_pattern = f"%{query_text}%"
+        select_stmt = select_stmt.where(Speaker.name.ilike(like_pattern))
 
     if chamber:
-        query = query.where(Speaker.chamber == chamber)
+        select_stmt = select_stmt.where(Speaker.chamber == chamber)
 
-    result = await db.execute(query.limit(limit))
+    result = await db.execute(select_stmt.limit(limit))
     speakers = result.scalars().all()
 
     return {
