@@ -22,21 +22,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import get_settings
 from app.dependencies import get_db_session
-from models.speaker import Speaker
-from models.video import Video as VideoModel
 from models.entity import Entity
 from models.relationship import Relationship
+from models.speaker import Speaker
+from models.video import Video as VideoModel
 from models.mention import Mention
 from models.transcript_segment import TranscriptSegment
 from parsers.models import OrderPaper as ParsedOrderPaper
 from parsers.transcript_models import SessionTranscript
 from services.embeddings import EmbeddingService
+from services.entity_extractor import EntityExtractor
 from services.gemini import GeminiClient
 from services.transcript_segmenter import TranscriptSegmentData, TranscriptSegmenter
 from services.video_transcription import VideoTranscriptionService
 
-if TYPE_CHECKING:
-    from services.entity_extractor import EntityExtractor
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -810,8 +809,6 @@ async def main():
 
     settings = get_settings()
 
-    from app.dependencies import get_db_session
-
     client = GeminiClient(
         api_key=settings.google_api_key,
         model=settings.gemini_model,
@@ -819,8 +816,6 @@ async def main():
     )
 
     async with _db_session() as db:
-        from services.entity_extractor import EntityExtractor
-
         ingestor = VideoIngestor(
             db,
             client,

@@ -698,11 +698,11 @@ IMPORTANT:
                 existing_ids.add(entity.entity_id)
         return entities
 
-    def _parse_timecode(self, time_str: str) -> int:
+    def _parse_timecode(self, time_str: str) -> int | None:
         import re
 
         match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
         if not match:
-            return 0
+            return None
         minutes, seconds, ms = map(int, match.groups())
         return minutes * 60 + seconds

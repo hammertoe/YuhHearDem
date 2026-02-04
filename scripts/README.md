@@ -2,12 +2,15 @@
 
 Complete pipeline for scraping, parsing, and ingesting Barbados parliamentary data.
 
-## Prerequisites
+**Related Documentation**:
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide with code map
+- [README.md](../README.md) - Project overview and quick start
+- [QUICKSTART.md](../QUICKSTART.md) - Step-by-step local setup
+- [USAGE.md](../USAGE.md) - Usage examples
 
-Install additional dependencies:
-```bash
-pip install yt-dlp requests beautifulsoup4
-```
+**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
+
+## Prerequisites
 
 Environment variables must be set in `.env`:
 ```bash
@@ -17,7 +20,20 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/yuhheardem
 
 ## Quick Start
 
-### 1. Run Full Pipeline (Recommended)
+### 1. Run Daily Pipeline (Recommended)
+
+Automated daily pipeline that scrapes papers, monitors YouTube, matches videos, and transcribes:
+
+```bash
+# Run full daily pipeline (no video download needed)
+python scripts/daily_pipeline.py
+
+# Run specific steps
+python scripts/daily_pipeline.py --step scrape
+python scripts/daily_pipeline.py --step match
+```
+
+### 2. Run Full Ingestion Pipeline
 
 Scrapes session papers, downloads them, parses with Gemini, and saves to database:
 
@@ -25,11 +41,11 @@ Scrapes session papers, downloads them, parses with Gemini, and saves to databas
 # Scrape and ingest order papers
 python scripts/run_full_ingestion.py
 
-# With video download (requires data/videos/urls.txt)
-python scripts/run_full_ingestion.py --download-videos
+# With specific chamber and limit
+python scripts/run_full_ingestion.py --chamber house --max-papers 10
 ```
 
-### 2. Individual Steps
+### 3. Individual Steps
 
 #### Scrape Session Papers
 
@@ -42,19 +58,6 @@ python scripts/scrape_session_papers.py --download
 
 # Specific chamber
 python scripts/scrape_session_papers.py --chamber senate --download
-```
-
-#### Download YouTube Videos
-
-```bash
-# Single video
-python scripts/download_youtube_videos.py https://www.youtube.com/watch?v=VIDEO_ID
-
-# From list file (one URL per line)
-python scripts/download_youtube_videos.py --list data/videos/urls.txt
-
-# Audio only (faster, smaller files)
-python scripts/download_youtube_videos.py --list data/videos/urls.txt --audio-only
 ```
 
 #### Ingest Order Papers
@@ -73,7 +76,7 @@ python scripts/ingest_order_paper.py data/papers/paper.pdf --video-id VIDEO_ID
 #### Ingest Videos
 
 ```bash
-# Single video URL
+# Single video URL (YouTube URL passed directly to Gemini - no download)
 python scripts/ingest_video.py \
     --url https://www.youtube.com/watch?v=VIDEO_ID \
     --session-date 2024-01-15 \
@@ -88,22 +91,37 @@ python scripts/ingest_video.py \
     --order-paper data/papers/session_paper.pdf
 ```
 
+#### Match Videos to Papers
+
+```bash
+# Match all unprocessed videos
+python scripts/match_videos_to_papers.py
+
+# Show only ambiguous matches for manual review
+python scripts/match_videos_to_papers.py --review-only
+
+# Interactive review mode
+python scripts/match_videos_to_papers.py --interactive
+```
+
 ## Workflow
 
 ### Complete Workflow
 
 1. **Create directories:**
    ```bash
-   mkdir -p data/papers data/videos
+   mkdir -p data/papers
    ```
 
-2. **Download videos manually (optional):**
-   - Go to Barbados Parliament YouTube channel
-   - Copy URLs to `data/videos/urls.txt` (one per line)
-
-3. **Run full pipeline:**
+2. **Run full pipeline:**
    ```bash
-   python scripts/run_full_ingestion.py --download-videos
+   python scripts/run_full_ingestion.py --chamber house --max-papers 10
+   ```
+
+3. **Monitor and match videos:**
+   ```bash
+   python scripts/daily_pipeline.py --step monitor
+   python scripts/daily_pipeline.py --step match
    ```
 
 ### Manual Workflow
@@ -115,17 +133,12 @@ For more control, run steps individually:
    python scripts/scrape_session_papers.py --download --output data/papers
    ```
 
-2. **Download videos manually:**
-   ```bash
-   python scripts/download_youtube_videos.py --list data/videos/urls.txt
-   ```
-
-3. **Ingest order papers:**
+2. **Ingest order papers:**
    ```bash
    python scripts/ingest_order_paper.py data/papers/
    ```
 
-4. **Create video mapping** (matches PDFs to videos):
+3. **Create video mapping** (matches PDFs to videos):
    Create `data/video_ingest_mapping.json`:
    ```json
    [
@@ -138,7 +151,7 @@ For more control, run steps individually:
    ]
    ```
 
-5. **Ingest videos:**
+4. **Ingest videos (URLs processed directly by Gemini):**
    ```bash
    python scripts/ingest_video.py --mapping data/video_ingest_mapping.json
    ```
@@ -147,29 +160,28 @@ For more control, run steps individually:
 
 ### `run_full_ingestion.py`
 
-Orchestrates complete pipeline.
+Orchestrates complete pipeline for order papers.
 
 **Options:**
 - `--chamber`: house or senate (default: house)
 - `--max-papers`: Max order papers to scrape
-- `--max-videos`: Max videos to download
-- `--download-videos`: Download YouTube videos
 - `--output`: Output directory (default: data/)
+
+### `daily_pipeline.py`
+
+Automated daily pipeline for complete workflow.
+
+**Steps:**
+1. `scrape` - Scrape new order papers
+2. `monitor` - Check YouTube for new videos
+3. `match` - Match videos to order papers
+4. `process` - Transcribe matched videos (using URLs, no download)
 
 ### `scrape_session_papers.py`
 
 Scrapes session papers from parliament website.
 
 **Note:** You may need to adjust URL patterns and selectors based on actual website structure. The current implementation is a template.
-
-### `download_youtube_videos.py`
-
-Downloads YouTube videos with metadata.
-
-**Options:**
-- `--audio-only`: Extract audio only (faster)
-- `--list`: File with URLs
-- `--output`: Output directory
 
 ### `ingest_order_paper.py`
 
@@ -190,6 +202,17 @@ Transcribes videos with Gemini and saves to database.
 - Extracts entities from transcript
 - Can use order paper for context
 - Skips already ingested videos
+- **Uses YouTube URLs directly** - no video download required
+
+### `match_videos_to_papers.py`
+
+Matches YouTube videos to order papers automatically.
+
+**Options:**
+- `--threshold`: Confidence threshold for auto-accept (default: 90)
+- `--review-only`: Only show ambiguous matches
+- `--interactive`: Run interactive review mode
+- `--dry-run`: Show what would be matched without changes
 
 ## Troubleshooting
 
@@ -199,14 +222,6 @@ If session papers don't scrape:
 1. Check parliament website is accessible
 2. Inspect HTML structure and update selectors in `scrape_session_papers.py`
 3. Download PDFs manually if needed
-
-### Video Download Issues
-
-If YouTube downloads fail:
-1. Ensure `yt-dlp` is installed and updated: `pip install --upgrade yt-dlp`
-2. Check internet connectivity
-3. Verify URLs are valid
-4. Try `--audio-only` for smaller files
 
 ### Gemini API Issues
 
@@ -242,3 +257,16 @@ After ingestion:
    - Ask about legislation, speakers, sessions
    - View entity relationships in the graph
    - Search transcripts semantically
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](../README.md) | Project overview and quick start |
+| [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local setup |
+| [USAGE.md](../USAGE.md) | Usage examples |
+| [ARCHITECTURE_ANALYSIS.md](../docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
+| [deployment.md](../docs/deployment.md) | Deployment guide |

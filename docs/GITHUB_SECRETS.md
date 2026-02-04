@@ -2,6 +2,12 @@
 
 This document lists all GitHub secrets required for automated deployment of YuhHearDem.
 
+**Related Documentation**:
+- [deployment.md](./deployment.md) - Comprehensive deployment guide
+- [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) - Quick deployment guide
+- [DEPLOYMENT_IMPLEMENTATION.md](./DEPLOYMENT_IMPLEMENTATION.md) - Implementation details
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide
+
 ## Required Secrets
 
 Set these secrets in your GitHub repository (Settings → Secrets and variables → Actions):
@@ -175,3 +181,17 @@ Check the GitHub Actions logs for detailed error messages. Common issues:
 - [SSH Key Best Practices](https://www.ssh.com/academy/ssh/key)
 - [Deployment Documentation](./deployment.md)
 - [Deployment Quickstart](./DEPLOYMENT_QUICKSTART.md)
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](../README.md) | Project overview and quick start |
+| [deployment.md](./deployment.md) | Comprehensive deployment guide |
+| [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) | Quick deployment reference |
+| [DEPLOYMENT_IMPLEMENTATION.md](./DEPLOYMENT_IMPLEMENTATION.md) | Implementation details |
+| [ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md) | System architecture analysis |
+| [REBUILD_PLAN.md](./REBUILD_PLAN.md) | Original implementation plan |

@@ -2,6 +2,12 @@
 
 This guide walks you through deploying YuhHearDem to the production server (yhd) using the blue-green deployment strategy.
 
+**Related Documentation**:
+- [deployment.md](./deployment.md) - Comprehensive deployment guide
+- [DEPLOYMENT_IMPLEMENTATION.md](./DEPLOYMENT_IMPLEMENTATION.md) - Implementation details
+- [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) - GitHub Actions secrets setup
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide
+
 ## Prerequisites
 
 - Access to the yhd server (SSH)

@@ -2,9 +2,15 @@
 
 ## Executive Summary
 
-This document provides a comprehensive architectural analysis of the Barbados Parliamentary Knowledge Graph system. This was an experimental rewrite of a previous system, featuring a multi-stage pipeline for processing parliamentary proceedings using modern NLP techniques, LLM-based entity extraction, and an agentic RAG (Retrieval-Augmented Generation) query system.
+This document provides a comprehensive architectural analysis of the Barbados Parliamentary Knowledge Graph system (YuhHearDem). The system features a multi-stage pipeline for processing parliamentary proceedings using modern NLP techniques, LLM-based entity extraction, and an agentic RAG (Retrieval-Augmented Generation) query system.
 
 **Key Innovation**: The system processes parliamentary videos by using **Order Papers as context** - PDF documents that contain the session agenda and speaker list - to guide video transcription and speaker attribution with high accuracy.
+
+**Related Documentation**:
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide and code map
+- [REBUILD_PLAN.md](./REBUILD_PLAN.md) - Implementation timeline and project plan
+- [deployment.md](./deployment.md) - Production deployment guide
+- [README.md](../README.md) - Project overview and quick start
 
 ---
 
@@ -624,8 +630,8 @@ data/
 
 - `google-genai` - Gemini API client
 - `spacy` + `en_core_web_trf` - NLP preprocessing
-- `chromadb` + `sentence-transformers` - Vector search
-- `thefuzz` - Fuzzy string matching
+- `sentence-transformers` - Vector embeddings
+- `pgvector` - PostgreSQL vector extension
 - `fastapi` + `uvicorn` - Web API
 - `pydantic` - Data validation
 
@@ -643,12 +649,19 @@ This system represents a sophisticated approach to parliamentary transcript proc
 
 The **two-pass entity extraction** and **hybrid spaCy + LLM approach** provide a good balance of efficiency and accuracy. The **agentic RAG system** demonstrates how LLMs can effectively query structured knowledge graphs when given appropriate tools.
 
-For a production rewrite, focus on:
+---
 
-1. **Data integrity** - Proper database with transactions
-2. **Observability** - Logging, metrics, error tracking
-3. **Scalability** - Async processing, caching strategies
-4. **Usability** - Web interface, verification workflows
-5. **Testing** - Comprehensive test coverage
+## Documentation Index
 
-The experimental nature of this codebase means many edge cases were discovered but not fully resolved. The architecture is sound, but implementation details need hardening for production use.
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](../README.md) | Project overview and quick start |
+| [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local development guide |
+| [USAGE.md](../USAGE.md) | Script usage and examples |
+| [REBUILD_PLAN.md](./REBUILD_PLAN.md) | Original implementation plan |
+| [deployment.md](./deployment.md) | Production deployment guide |
+| [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) | Quick deployment reference |
+| [DEPLOYMENT_IMPLEMENTATION.md](./DEPLOYMENT_IMPLEMENTATION.md) | Deployment implementation details |
+| [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) | GitHub Actions secrets setup |
+| [scripts/README.md](../scripts/README.md) | Data ingestion scripts guide |

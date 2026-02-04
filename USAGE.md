@@ -6,15 +6,17 @@ Complete data ingestion pipeline with the following scripts:
 
 ### Scripts
 - `scrape_session_papers.py` - Scrapes session papers from parliament website
-- `download_youtube_videos.py` - Downloads YouTube videos (with yt-dlp)
-- `simple_download_video.py` - Simple YouTube download example
 - `ingest_order_paper.py` - Parses PDFs & saves to database
-- `ingest_video.py` - Transcribes videos & saves to database
+- `ingest_video.py` - Transcribes videos (using YouTube URLs directly) & saves to database
+- `match_videos_to_papers.py` - Matches videos to order papers automatically
 - `run_full_ingestion.py` - Orchestrates full pipeline
+- `daily_pipeline.py` - Automated daily pipeline
 
 ### Documentation
 - `scripts/README.md` - Detailed script documentation
 - `QUICKSTART.md` - Step-by-step getting started guide
+
+**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
 
 ## How to Use
 
@@ -27,18 +29,7 @@ Complete data ingestion pipeline with the following scripts:
 # Download PDFs to: data/papers/
 ```
 
-**Step 2: Download YouTube Videos**
-```bash
-# Go to Barbados Parliament YouTube channel
-# Create URL list
-echo "https://www.youtube.com/watch?v=VIDEO_ID" > data/videos/urls.txt
-
-# Download
-source venv/bin/activate
-python scripts/simple_download_video.py 'https://www.youtube.com/watch?v=VIDEO_ID'
-```
-
-**Step 3: Ingest to Database**
+**Step 2: Ingest to Database**
 ```bash
 # Ingest order papers
 python scripts/ingest_order_paper.py data/papers/
@@ -47,11 +38,11 @@ python scripts/ingest_order_paper.py data/papers/
 # Create: data/video_mapping.json
 # Format: See below
 
-# Ingest videos
+# Ingest videos (YouTube URLs processed directly by Gemini)
 python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-**Step 4: Start Application**
+**Step 3: Start Application**
 ```bash
 source venv/bin/activate
 uvicorn app.main:app --reload
@@ -62,11 +53,26 @@ uvicorn app.main:app --reload
 - Graph: http://localhost:8000/static/graph.html
 - API Docs: http://localhost:8000/docs
 
-### Option 2: Full Pipeline (Advanced)
+### Option 2: Daily Pipeline (Recommended for Automation)
 
 ```bash
-# Attempt full pipeline
-python scripts/run_full_ingestion.py --download-videos
+# Run full automated pipeline
+python scripts/daily_pipeline.py
+
+# Or run specific steps
+python scripts/daily_pipeline.py --step scrape
+python scripts/daily_pipeline.py --step match
+python scripts/daily_pipeline.py --step process
+```
+
+### Option 3: Full Pipeline (Advanced)
+
+```bash
+# Run full ingestion pipeline for order papers
+python scripts/run_full_ingestion.py --chamber house --max-papers 10
+
+# Then match and process videos
+python scripts/daily_pipeline.py --step match
 ```
 
 Note: The scraper may need manual adjustment based on website structure. Manual download is often more reliable.
@@ -101,14 +107,7 @@ Note: The scraper may need manual adjustment based on website structure. Manual 
 - Downloads PDFs to `data/papers/`
 - Usage: `python scripts/scrape_session_papers.py --download`
 
-### 2. download_youtube_videos.py / simple_download_video.py
-
-- Downloads YouTube videos with metadata
-- Saves to `data/videos/`
-- Extracts: title, duration, channel
-- Usage: `python scripts/simple_download_video.py URL`
-
-### 3. ingest_order_paper.py
+### 2. ingest_order_paper.py
 
 - Parses PDF with Gemini Vision API
 - Extracts: session title, date, speakers, agenda items
@@ -116,36 +115,24 @@ Note: The scraper may need manual adjustment based on website structure. Manual 
 - Creates speaker records
 - Usage: `python scripts/ingest_order_paper.py PDF_PATH`
 
-### 4. ingest_video.py
+### 3. ingest_video.py
 
 - Transcribes YouTube video with Gemini API
+- **Uses YouTube URLs directly** - no video download required
 - Extracts entities from transcript
 - Saves to `videos` table
 - Links to order papers if provided
 - Usage: `python scripts/ingest_video.py --mapping MAPPING_FILE`
 
+### 4. match_videos_to_papers.py
+
+- Matches YouTube videos to order papers automatically
+- Based on session date, chamber, and sitting number
+- Auto-accepts high-confidence matches
+- Flags ambiguous matches for review
+- Usage: `python scripts/match_videos_to_papers.py`
+
 ## Troubleshooting
-
-### YouTube URL Issues
-
-The shell may truncate URLs. Try these approaches:
-
-**Option A: Use quotes**
-```bash
-python scripts/simple_download_video.py 'https://www.youtube.com/watch?v=ID'
-```
-
-**Option B: Use environment variable**
-```bash
-export VIDEO_URL="https://www.youtube.com/watch?v=ID"
-python scripts/simple_download_video.py "$VIDEO_URL"
-```
-
-**Option C: Put URL in file**
-```bash
-echo "https://www.youtube.com/watch?v=ID" > url.txt
-python scripts/simple_download_video.py $(cat url.txt)
-```
 
 ### Module Not Found Errors
 
@@ -180,20 +167,33 @@ docker-compose restart
 ✅ Documentation written
 ✅ Type errors fixed
 ✅ Scraper URL updated to correct parliament website
+✅ Video download code removed - URLs processed directly by Gemini
 
 ## Next Steps
 
 1. Download sample PDF from parliament website
-2. Download sample YouTube video
-3. Test ingestion with single files first
-4. Start exploring via chat interface
-5. Check knowledge graph visualization
+2. Test ingestion with single files first
+3. Start exploring via chat interface
+4. Check knowledge graph visualization
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](./AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](./README.md) | Project overview and quick start |
+| [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup |
+| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
+| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
+| [deployment.md](./docs/deployment.md) | Deployment guide |
 
 ## Example Workflow
 
 ```bash
 # Create directories
-mkdir -p data/papers data/videos
+mkdir -p data/papers
 
 # 1. Download a session paper manually
 # Visit: https://www.barbadosparliament.com/order_papers/search
@@ -203,10 +203,8 @@ mkdir -p data/papers data/videos
 source venv/bin/activate
 python scripts/ingest_order_paper.py data/papers/test.pdf
 
-# 3. Download a video
-python scripts/simple_download_video.py 'https://www.youtube.com/watch?v=SAMPLE'
-
-# 4. Create minimal mapping
+# 3. Create minimal mapping for video
+# YouTube URL will be processed directly by Gemini - no download needed
 cat > data/video_mapping.json << 'EOF'
 [
     {
@@ -217,14 +215,14 @@ cat > data/video_mapping.json << 'EOF'
 ]
 EOF
 
-# 5. Ingest video
+# 4. Ingest video (URL passed directly to Gemini)
 python scripts/ingest_video.py --mapping data/video_mapping.json
 
-# 6. Start app
+# 5. Start app
 uvicorn app.main:app --reload
 
-# 7. Open browser to: http://localhost:8000/static/chat.html
-# 8. Ask: "What topics were in the session?"
+# 6. Open browser to: http://localhost:8000/static/chat.html
+# 7. Ask: "What topics were in the session?"
 ```
 
 ## Notes
@@ -234,3 +232,4 @@ uvicorn app.main:app --reload
 - Start with 1-2 test files to verify pipeline works
 - Gemini API has rate limits - check quota if requests fail
 - All changes are committed to git
+- **Videos are never downloaded** - YouTube URLs processed directly by Gemini API

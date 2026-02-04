@@ -2,6 +2,12 @@
 
 This document summarizes the blue-green deployment implementation for YuhHearDem.
 
+**Related Documentation**:
+- [deployment.md](./deployment.md) - Comprehensive deployment guide
+- [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) - Quick start for deployment
+- [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) - GitHub Actions secrets setup
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide and code map
+
 ## What Was Implemented
 
 ### 1. Docker Configuration
@@ -286,8 +292,20 @@ See [docs/deployment.md](./deployment.md) for comprehensive troubleshooting.
 
 ## References
 
-- [yuhgettintru deployment](../yuhgettintru/docs/DEPLOYMENT.md)
-- [weoutside246 deployment](../weoutside246/docs/deployment.md)
 - [GitHub Actions](https://docs.github.com/en/actions)
 - [Docker Compose](https://docs.docker.com/compose/)
 - [Nginx](https://nginx.org/en/docs/)
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](../README.md) | Project overview and quick start |
+| [deployment.md](./deployment.md) | Comprehensive deployment guide |
+| [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) | Quick deployment reference |
+| [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) | GitHub Actions secrets setup |
+| [ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md) | System architecture analysis |
+| [REBUILD_PLAN.md](./REBUILD_PLAN.md) | Original implementation plan |

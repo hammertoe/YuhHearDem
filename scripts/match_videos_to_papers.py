@@ -29,7 +29,7 @@ from datetime import datetime
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -76,18 +76,21 @@ class VideoPaperMatchingCLI:
             logger.info(f"Loaded {len(order_papers)} order papers from database")
 
             # Load videos that need matching
+            # Find videos not linked by any order paper
+            matched_video_ids = select(OrderPaper.video_id).where(OrderPaper.video_id.isnot(None))
+
             if review_only:
                 # Only show videos that couldn't be auto-matched
                 videos_result = await db.execute(
                     select(Video)
-                    .where(Video.order_paper_id.is_(None))
+                    .where(not_(Video.id.in_(matched_video_ids)))
                     .order_by(Video.session_date.desc().nulls_last())
                 )
             else:
                 # All unmatched videos
                 videos_result = await db.execute(
                     select(Video)
-                    .where(Video.order_paper_id.is_(None))
+                    .where(not_(Video.id.in_(matched_video_ids)))
                     .order_by(Video.session_date.desc().nulls_last())
                 )
 
@@ -217,9 +220,10 @@ class VideoPaperMatchingCLI:
             order_papers = order_papers_result.scalars().all()
 
             # Load unmatched videos
+            matched_video_ids = select(OrderPaper.video_id).where(OrderPaper.video_id.isnot(None))
             videos_result = await db.execute(
                 select(Video)
-                .where(Video.order_paper_id.is_(None))
+                .where(not_(Video.id.in_(matched_video_ids)))
                 .order_by(Video.session_date.desc().nulls_last())
             )
             videos = videos_result.scalars().all()

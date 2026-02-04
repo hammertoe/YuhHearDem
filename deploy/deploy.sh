@@ -53,6 +53,13 @@ get_slot_port() {
 
 health_check() {
     local port=$1
+    local container_name=""
+    if [[ "$port" == "8003" ]]; then
+        container_name="yhd-web-blue"
+    else
+        container_name="yhd-web-green"
+    fi
+
     local max_retries=30
     local retry_interval=2
 
@@ -69,11 +76,17 @@ health_check() {
             fi
         fi
 
-        log_warn "Health check attempt $i/$max_retries failed, retrying in ${retry_interval}s..."
+        if [[ $i -eq 1 ]]; then
+            log_warn "Health check attempt $i/$max_retries failed. Response: $response"
+        else
+            log_warn "Health check attempt $i/$max_retries failed, retrying in ${retry_interval}s..."
+        fi
         sleep $retry_interval
     done
 
     log_error "Health check failed after $max_retries attempts"
+    log_error "Container logs for $container_name:"
+    docker logs "$container_name" --tail 100 2>&1 || true
     return 1
 }
 
@@ -204,6 +217,10 @@ deploy() {
     # Start new container
     log_info "Starting $target_slot container..."
     IMAGE_TAG="${target_slot}" docker compose --env-file .env -p yuhheardem -f "$compose_file" up -d
+
+    # Give the container a moment to start up
+    log_info "Waiting 5 seconds for application to initialize..."
+    sleep 5
 
     # Health check
     if ! health_check "$target_port"; then

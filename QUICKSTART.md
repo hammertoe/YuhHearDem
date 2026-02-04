@@ -2,6 +2,14 @@
 
 This guide walks you through getting YuhHearDem running with real data.
 
+**Related Documentation**:
+- [README.md](./README.md) - Project overview
+- [AGENTS.md](./AGENTS.md) - Comprehensive codebase guide with code map
+- [scripts/README.md](./scripts/README.md) - Detailed script documentation
+- [USAGE.md](./USAGE.md) - Usage examples
+
+**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
+
 ## Step 1: Setup
 
 ```bash
@@ -28,16 +36,12 @@ alembic upgrade head
    - Click "House of Assembly" or "The Senate"
    - Download PDFs to `data/papers/`
 
-2. **Download YouTube videos:**
+2. **Get YouTube video URLs:**
    - Go to Barbados Parliament YouTube channel
-   - Copy video URLs to a text file
-   - Save as `data/videos/urls.txt`
+   - Copy video URLs (these will be processed directly by Gemini - no download needed)
 
 ```bash
-mkdir -p data/papers data/videos
-
-# Download videos from URL list
-python scripts/simple_download_video.py https://www.youtube.com/watch?v=VIDEO_ID
+mkdir -p data/papers
 ```
 
 ### Option B: Automated
@@ -53,7 +57,7 @@ python scripts/scrape_session_papers.py --download
 
 ## Step 3: Ingest Data
 
-Once you have PDFs and videos:
+Once you have PDFs and video URLs:
 
 ### Ingest Order Papers
 
@@ -85,7 +89,7 @@ First, create a mapping file `data/video_mapping.json`:
 ]
 ```
 
-Then ingest:
+Then ingest (YouTube URL processed directly by Gemini - no download needed):
 ```bash
 python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
@@ -140,14 +144,6 @@ The scraper is a template. You may need to:
 2. Or manually download PDFs (often faster)
 3. The manual approach is recommended
 
-### Video download fails
-
-If YouTube downloads fail:
-1. Ensure `yt-dlp` is installed: `pip install yt-dlp`
-2. Check internet connectivity
-3. Verify URLs are valid
-4. Try just one video at a time first
-
 ### Database connection failed
 
 ```bash
@@ -181,12 +177,11 @@ docker-compose logs postgres
 5. Creates/updates speaker records
 
 ### Video Ingestion
-1. Downloads YouTube video (or uses local file)
-2. Sends to Gemini Video API
-3. Transcribes with speaker attribution
-4. Extracts entities from transcript
-5. Saves to `videos` table
-6. Links to order papers if provided
+1. **Passes YouTube URL directly to Gemini Video API** (no download)
+2. Transcribes with speaker attribution
+3. Extracts entities from transcript
+4. Saves to `videos` table
+5. Links to order papers if provided
 
 ### Entity Extraction
 Automatically happens during video transcription:
@@ -207,3 +202,16 @@ Once you have data ingested:
 For more details, see:
 - `scripts/README.md` - Detailed script documentation
 - `README.md` - Full project documentation
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](./AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](./README.md) | Project overview and quick start |
+| [USAGE.md](./USAGE.md) | Usage examples |
+| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
+| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
+| [deployment.md](./docs/deployment.md) | Deployment guide |

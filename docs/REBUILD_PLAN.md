@@ -8,7 +8,13 @@ This plan outlines the ground-up rebuild of the YuhHearDem parliamentary transcr
 **Approach**: Test-Driven Development (TDD)
 **Database**: PostgreSQL 16+ with pgvector extension
 **Authentication**: None (anonymous sessions, like original)
-**UI**: Port existing vanilla JS/Tailwind interface
+**UI**: Vanilla JS/Tailwind interface
+
+**Related Documentation**:
+- [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide and code map
+- [ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md) - System architecture analysis
+- [deployment.md](./deployment.md) - Production deployment guide
+- [README.md](../README.md) - Project overview and quick start
 
 ---
 
@@ -1213,12 +1219,28 @@ MVP is successful when:
 ## References
 
 - **Architecture Analysis**: `docs/ARCHITECTURE_ANALYSIS.md`
-- **Experimental Rewrite**: `../yuhheardem2/`
-- **Original Site**: `../YuhHearDem.orig/`
+- **Codebase Guide**: `../AGENTS.md`
 - **Gemini API**: <https://ai.google.dev/gemini-api/docs>
 - **FastAPI**: <https://fastapi.tiangolo.com/>
 - **pgvector**: <https://github.com/pgvector/pgvector>
 - **Alembic**: <https://alembic.sqlalchemy.org/>
+
+---
+
+## Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
+| [README.md](../README.md) | Project overview and quick start |
+| [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local development guide |
+| [USAGE.md](../USAGE.md) | Script usage and examples |
+| [ARCHITECTURE_ANALYSIS.md](./ARCHITECTURE_ANALYSIS.md) | System architecture analysis |
+| [deployment.md](./deployment.md) | Production deployment guide |
+| [DEPLOYMENT_QUICKSTART.md](./DEPLOYMENT_QUICKSTART.md) | Quick deployment reference |
+| [DEPLOYMENT_IMPLEMENTATION.md](./DEPLOYMENT_IMPLEMENTATION.md) | Deployment implementation details |
+| [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) | GitHub Actions secrets setup |
+| [scripts/README.md](../scripts/README.md) | Data ingestion scripts guide |
 
 ---
 

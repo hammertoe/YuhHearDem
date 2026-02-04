@@ -503,9 +503,6 @@ Begin your analysis."""
                         }
                     )
 
-        print(
-            f"DEBUG _extract_entities_from_result: tool_results={result.get('tool_results', [])}, entities={entities}"
-        )
         return entities
 
     def _generate_answer_from_results(self, tool_results: list[dict], user_query: str) -> str:
@@ -634,44 +631,3 @@ Begin your analysis."""
         )
 
         return "\n\n".join(answer_parts)
-
-    def format_answer_with_citations(self, answer: str, citations: list[dict]) -> str:
-        """Format answer with citations."""
-        if not citations:
-            return answer
-
-        sections = []
-        current_section = ""
-
-        def add_section(title: str) -> None:
-            nonlocal current_section
-            if current_section != title:
-                if current_section:
-                    sections.append(current_section)
-                current_section = title
-
-        add_section("Answer")
-
-        for citation in citations:
-            cite_type = citation.get("type", "mention")
-
-            if cite_type == "mention" and citation.get("timestamp"):
-                add_section(f"Citation at {citation.get('timestamp', '0')}s")
-                if citation.get("context"):
-                    add_section(f'Context: "{citation.get("context", "")}"')
-                    if citation.get("video_id"):
-                        add_section(
-                            f"Source: https://youtube.com/watch?v={citation.get('video_id', '')}"
-                        )
-            elif cite_type == "relationship":
-                source_entity_id = citation.get("source_id", "Unknown")
-                target_entity_id = citation.get("target_id", "Unknown")
-                relation = citation.get("relation_type", "Unknown")
-                add_section(f"Relationship: {source_entity_id} → {target_entity_id} ({relation})")
-
-            if citation.get("evidence"):
-                add_section(f'"{citation.get("evidence", "")}"')
-
-        sections.append("\n")
-
-        return "\n".join(sections)

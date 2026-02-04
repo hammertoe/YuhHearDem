@@ -41,7 +41,7 @@ alembic upgrade head
 
 # 4. Ingest data
 # Option A: Full pipeline (automatic)
-python scripts/run_full_ingestion.py --download-videos
+python scripts/run_full_ingestion.py --chamber house --max-papers 10
 
 # Option B: Manual step-by-step
 # See scripts/README.md for details
@@ -254,10 +254,27 @@ FUZZY_MATCH_THRESHOLD=85
 
 ## Documentation
 
+- [AGENTS.md](./AGENTS.md) - Comprehensive codebase guide with code map (start here for development)
 - [Architecture Analysis](./docs/ARCHITECTURE_ANALYSIS.md) - System architecture and design decisions
 - [Rebuild Plan](./docs/REBUILD_PLAN.md) - Technical implementation details
 - [Deployment Quickstart](./docs/DEPLOYMENT_QUICKSTART.md) - Get started with deployment
 - [Deployment Guide](./docs/deployment.md) - Comprehensive deployment documentation
+- [Scripts Documentation](./scripts/README.md) - Data ingestion scripts guide
+
+### Documentation Index
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [AGENTS.md](./AGENTS.md) | Codebase guide with code map | AI agents, developers |
+| [README.md](./README.md) | Project overview and quick start | Everyone |
+| [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup | New users |
+| [USAGE.md](./USAGE.md) | Script usage and examples | Users |
+| [scripts/README.md](./scripts/README.md) | Data ingestion guide | Users |
+| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture | Developers |
+| [REBUILD_PLAN.md](./docs/REBUILD_PLAN.md) | Implementation plan | Developers |
+| [deployment.md](./docs/deployment.md) | Deployment guide | DevOps |
+| [DEPLOYMENT_QUICKSTART.md](./docs/DEPLOYMENT_QUICKSTART.md) | Quick deployment | DevOps |
+| [GITHUB_SECRETS.md](./docs/GITHUB_SECRETS.md) | Secrets setup | DevOps |
 
 ## Contributing
 

@@ -684,7 +684,7 @@ Return the complete transcript in the specified JSON structure."""
 
         return (merged_transcript, new_speakers)
 
-    def _parse_timecode(self, time_str: str) -> int:
+    def _parse_timecode(self, time_str: str) -> int | None:
         """
         Parse time string to total seconds.
 
@@ -692,11 +692,11 @@ Return the complete transcript in the specified JSON structure."""
             time_str: Time in format "XmYsZms"
 
         Returns:
-            Total seconds (rounded)
+            Total seconds (rounded) or None if invalid
         """
         match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
         if not match:
-            return 0
+            return None
         minutes, seconds, ms = map(int, match.groups())
         return minutes * 60 + seconds
 

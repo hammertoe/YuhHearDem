@@ -5,7 +5,7 @@ This script runs daily to:
 1. Scrape new order papers from parliament website
 2. Check YouTube channel for new videos
 3. Match videos to order papers automatically
-4. Process (download + transcribe) matched videos
+4. Transcribe matched videos using Gemini (no download required)
 
 Designed to run via cron daily at a scheduled time.
 
@@ -36,8 +36,15 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, and_, or_
+# Load environment variables
+from dotenv import load_dotenv
 
+load_dotenv()
+
+from sqlalchemy import select, and_, or_, not_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.database import get_session_maker
 from app.dependencies import get_db_session
 from models.video import Video
 from models.order_paper import OrderPaper
@@ -128,27 +135,21 @@ class DailyPipeline:
                 # Ingest into database
                 from scripts.ingest_order_paper import OrderPaperIngestor
 
-                ingestor = OrderPaperIngestor()
+                gemini_client = GeminiClient()
+                ingestor = OrderPaperIngestor(gemini_client=gemini_client)
+                session_maker = get_session_maker()
 
-                async with AsyncSessionLocal() as db:
-                    for paper_data in house_papers + senate_papers:
-                        try:
-                            # Check if already exists
-                            pdf_hash = ingestor._calculate_hash(paper_data["pdf_url"])
-                            existing = await db.execute(
-                                select(OrderPaper).where(OrderPaper.pdf_hash == pdf_hash)
-                            )
-                            if existing.scalar_one_or_none():
-                                continue
-
-                            # Download and ingest
-                            pdf_path = Path("data/papers") / f"{paper_data['title']}.pdf"
-                            if scraper.download_paper(paper_data["pdf_url"], pdf_path):
-                                await ingestor.ingest_pdf(db, pdf_path)
+                for paper_data in house_papers + senate_papers:
+                    try:
+                        # Download and ingest
+                        pdf_path = Path("data/papers") / f"{paper_data['title']}.pdf"
+                        if scraper.download_paper(paper_data["pdf_url"], pdf_path):
+                            result = await ingestor.ingest_pdf(session_maker, pdf_path)
+                            if result["status"] == "success":
                                 self.results["papers_new"] += 1
 
-                        except Exception as e:
-                            logger.warning(f"Failed to ingest {paper_data['title']}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Failed to ingest {paper_data['title']}: {e}")
             else:
                 logger.info("[DRY RUN] Would ingest new papers")
 
@@ -184,7 +185,7 @@ class DailyPipeline:
                 logger.info(f"Found {len(videos)} videos on channel")
 
                 if not self.dry_run:
-                    async with AsyncSessionLocal() as db:
+                    async with get_session_maker()() as db:
                         for video_info in videos:
                             try:
                                 youtube_id = video_info.get("id")
@@ -234,14 +235,17 @@ class DailyPipeline:
         logger.info("\n[STEP 3] Matching videos to order papers...")
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_session_maker()() as db:
                 # Load all order papers
                 papers_result = await db.execute(select(OrderPaper))
                 order_papers = papers_result.scalars().all()
 
                 # Load unmatched videos
+                matched_video_ids = select(OrderPaper.video_id).where(
+                    OrderPaper.video_id.isnot(None)
+                )
                 videos_result = await db.execute(
-                    select(Video).where(Video.order_paper_id.is_(None))
+                    select(Video).where(not_(Video.id.in_(matched_video_ids)))
                 )
                 videos = videos_result.scalars().all()
 
@@ -263,9 +267,16 @@ class DailyPipeline:
                         )
 
                         if not result.is_ambiguous and result.matched_paper_id:
-                            # Auto-accept
+                            # Auto-accept - update OrderPaper to link to this video
                             if not self.dry_run:
-                                video.order_paper_id = result.matched_paper_id
+                                matched_paper = await db.execute(
+                                    select(OrderPaper).where(
+                                        OrderPaper.id == result.matched_paper_id
+                                    )
+                                )
+                                paper = matched_paper.scalar_one_or_none()
+                                if paper:
+                                    paper.video_id = video.id
                                 self.results["videos_matched_auto"] += 1
                                 logger.info(
                                     f"✓ Auto-matched: '{video.title[:40]}...' "
@@ -294,25 +305,25 @@ class DailyPipeline:
             self.results["errors"].append(f"Matching error: {e}")
 
     async def process_matched_videos(self):
-        """Step 4: Process (download + transcribe) matched videos."""
-        logger.info("\n[STEP 4] Processing matched videos...")
+        """Step 4: Transcribe matched videos using Gemini."""
+        logger.info("\n[STEP 4] Transcribing matched videos...")
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_session_maker()() as db:
                 # Load videos that are matched but not yet transcribed
+                # Join with OrderPaper to get linked order paper data
                 videos_result = await db.execute(
-                    select(Video)
+                    select(Video, OrderPaper)
+                    .join(OrderPaper, OrderPaper.video_id == Video.id)
                     .where(
                         and_(
-                            Video.order_paper_id.isnot(None),
                             Video.transcript.is_(None),  # Not yet transcribed
                         )
                     )
-                    .options(joinedload(Video.order_paper))
                 )
-                videos = videos_result.scalars().all()
+                video_paper_pairs = videos_result.all()
 
-                logger.info(f"Processing {len(videos)} matched videos")
+                logger.info(f"Processing {len(video_paper_pairs)} matched videos")
 
                 # Initialize transcription service
                 gemini_client = GeminiClient(temperature=0.0)
@@ -320,38 +331,27 @@ class DailyPipeline:
                     gemini_client=gemini_client, chunk_size=600, fuzzy_threshold=85
                 )
 
-                for video in videos:
+                for video, order_paper_record in video_paper_pairs:
                     try:
                         logger.info(f"Processing: {video.title[:50]}...")
 
                         if self.dry_run:
-                            logger.info("[DRY RUN] Would download and transcribe")
+                            logger.info("[DRY RUN] Would transcribe")
                             self.results["videos_processed"] += 1
-                            continue
-
-                        # Download video
-                        from scripts.download_youtube_videos import download_video
-
-                        video_path = Path("data/videos") / f"{video.youtube_id}.mp4"
-                        if not video_path.exists():
-                            video_path = download_video(video.youtube_url, video_path.parent)
-
-                        if not video_path or not video_path.exists():
-                            logger.error(f"Failed to download video: {video.youtube_id}")
                             continue
 
                         # Get order paper as parsed object
                         order_paper = ParsedOrderPaper(
-                            session_title=video.order_paper.session_title or video.title,
-                            session_date=video.order_paper.session_date,
-                            sitting_number=video.order_paper.sitting_number,
-                            speakers=video.order_paper.speakers or [],
-                            agenda_items=video.order_paper.agenda_items or [],
+                            session_title=order_paper_record.session_title or video.title,
+                            session_date=order_paper_record.session_date,
+                            sitting_number=order_paper_record.sitting_number,
+                            speakers=order_paper_record.speakers or [],
+                            agenda_items=order_paper_record.agenda_items or [],
                         )
 
-                        # Transcribe with order paper context
+                        # Transcribe with order paper context using YouTube URL directly
                         transcript, _ = parser.transcribe(
-                            video_url=str(video_path),
+                            video_url=video.youtube_url,
                             order_paper=order_paper,
                             speaker_id_mapping={},
                             fps=0.25,

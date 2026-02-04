@@ -9,6 +9,7 @@ from models.order_paper import OrderPaper
 from models.relationship import Relationship
 from models.session import Session
 from models.speaker import Speaker
+from models.transcript_segment import TranscriptSegment
 from models.vector_embedding import VectorEmbedding
 from models.video import Video
 
@@ -23,5 +24,6 @@ __all__ = [
     "Message",
     "Mention",
     "OrderPaper",
+    "TranscriptSegment",
     "VectorEmbedding",
 ]
