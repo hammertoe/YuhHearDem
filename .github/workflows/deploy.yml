@@ -65,10 +65,10 @@ jobs:
           username: ${{ vars.YHD_USER }}
           key: ${{ secrets.YHD_SSH_KEY }}
           port: ${{ vars.YHD_PORT || 22 }}
-          source: "deploy/"
-          target: "/opt/yuhheardem/deploy/"
+          local: "deploy/"
+          remote: "/opt/yuhheardem/deploy/"
           rm: true
-          overwrite: true
+          recursive: true
 
       - name: Deploy to yhd server
         uses: appleboy/ssh-action@v1.0.3

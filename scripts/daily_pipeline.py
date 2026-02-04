@@ -27,9 +27,11 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
-from datetime import datetime, timezone
+import dataclasses
+from datetime import datetime, timezone, date
 from pathlib import Path
 from typing import Optional
 
@@ -40,8 +42,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from sqlalchemy import and_, select
-
 from core.database import get_session_maker
 from models.order_paper import OrderPaper
 from models.video import Video
@@ -50,6 +50,15 @@ from parsers.video_transcript import VideoTranscriptionParser
 from parsers import models as Parsers
 from services.gemini import GeminiClient
 from services.video_paper_matcher import TitlePatternMatcher, VideoPaperMatcher
+from sqlalchemy import select, and_, or_, not_
+
+
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        return super().default(obj)
+
 
 Path("logs").mkdir(exist_ok=True)
 
@@ -392,7 +401,8 @@ class DailyPipeline:
                         )
 
                         # Save transcript to video record
-                        video.transcript = transcript.to_dict()
+                        transcript_dict = dataclasses.asdict(transcript)
+                        video.transcript = json.dumps(transcript_dict, cls=CustomEncoder)
                         video.transcript_processed_at = datetime.now()
 
                         self.results["videos_processed"] += 1
