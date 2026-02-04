@@ -31,7 +31,6 @@ def test_parse_agent_response_accepts_plain_text():
     assert result["answer"] == "Hello there"
 
 
-@pytest.mark.skip("Mock setup issue - entities extraction needs updated test mocks")
 @pytest.mark.anyio
 async def test_query_handles_function_calls_from_response():
     """Ensure agent executes tool calls from function_call response parts."""
@@ -67,14 +66,17 @@ async def test_query_handles_function_calls_from_response():
         return tool_result
 
     mock_generate = AsyncMock(
-        return_value=FakeResponse(
-            candidates=[
-                FakeCandidate(
-                    FakeContent([FakePart(FakeFunctionCall("find_entity", {"name": "Test"}))])
-                )
-            ],
-            text=None,
-        )
+        side_effect=[
+            FakeResponse(
+                candidates=[
+                    FakeCandidate(
+                        FakeContent([FakePart(FakeFunctionCall("find_entity", {"name": "Test"}))])
+                    )
+                ],
+                text=None,
+            ),
+            FakeResponse(candidates=[], text="done"),
+        ]
     )
     mock_models = Mock(generate_content=mock_generate)
     mock_aio = Mock(models=mock_models)
@@ -93,7 +95,7 @@ async def test_query_handles_function_calls_from_response():
     result = await agent.query(db=Mock(), user_query="who is test", max_iterations=1)
 
     assert result["success"] is True
-    assert result.get("entities", [])  # Entities may be empty depending on parsing
+    assert result["entities"]
 
 
 @pytest.mark.anyio
@@ -115,7 +117,7 @@ async def test_query_empty_response_returns_fallback():
     agent = ParliamentaryAgent(gemini_client=gemini_client, kg_store=store)
     agent.tools.get_tools_dict = Mock(return_value={"function_declarations": [], "tools": {}})
 
-    result = await agent.query(db=Mock(), user_query="last session", max_iterations=1)
+    result = await agent.query(db=Mock(), user_query="hello", max_iterations=1)
 
     assert result["success"] is True
     assert "couldn't" in result["answer"].lower() or "could not" in result["answer"].lower()
@@ -124,7 +126,7 @@ async def test_query_empty_response_returns_fallback():
 @pytest.mark.anyio
 async def test_query_uses_async_gemini_client():
     """Ensure agent uses async Gemini client for generate_content."""
-    mock_generate = AsyncMock(return_value=Mock(text="function_calls"))
+    mock_generate = AsyncMock(return_value=Mock(text="function_calls", candidates=[]))
     mock_models = Mock(generate_content=mock_generate)
     mock_aio = Mock(models=mock_models)
     mock_client = Mock(aio=mock_aio)

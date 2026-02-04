@@ -114,6 +114,9 @@ class ParliamentaryAgent:
 
             result = self._parse_agent_response(response_text, user_query)
 
+            if last_tool_results and not result.get("tool_results"):
+                result["tool_results"] = last_tool_results
+
             force_with_results = None
             if latest_tool_results:
                 answer_text = result.get("answer", "") if result.get("success") else ""
