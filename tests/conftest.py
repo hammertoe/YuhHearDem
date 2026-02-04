@@ -27,6 +27,20 @@ from app.config import get_settings
 from core.database import Base, reset_engine
 
 
+def pytest_collection_modifyitems(config, items):
+    run_integration = os.getenv("RUN_INTEGRATION_TESTS") == "1"
+    run_expensive = os.getenv("RUN_EXPENSIVE_TESTS") == "1"
+
+    integration_skip = pytest.mark.skip(reason="RUN_INTEGRATION_TESTS not set")
+    expensive_skip = pytest.mark.skip(reason="RUN_EXPENSIVE_TESTS not set")
+
+    for item in items:
+        if "integration" in item.keywords and not run_integration:
+            item.add_marker(integration_skip)
+        if ("expensive" in item.keywords or "slow" in item.keywords) and not run_expensive:
+            item.add_marker(expensive_skip)
+
+
 @pytest.fixture(scope="function")
 async def db_engine():
     """Create test database engine"""
