@@ -30,7 +30,7 @@ import asyncio
 import json
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -64,9 +64,17 @@ logger = logging.getLogger(__name__)
 class DailyPipeline:
     """Daily processing pipeline for parliament videos."""
 
-    def __init__(self, dry_run: bool = False, match_threshold: int = 90):
+    def __init__(
+        self,
+        dry_run: bool = False,
+        match_threshold: int = 75,
+        max_videos: int = 50,
+        max_papers: Optional[int] = None,
+    ):
         self.dry_run = dry_run
         self.match_threshold = match_threshold
+        self.max_videos = max_videos
+        self.max_papers = max_papers
         self.matcher = VideoPaperMatcher()
         self.results = {
             "papers_scraped": 0,
@@ -122,11 +130,15 @@ class DailyPipeline:
             scraper = SessionPaperScraper()
 
             # Scrape House papers
-            house_papers = scraper.scrape_session_papers(chamber="house")
+            house_papers = scraper.scrape_session_papers(
+                chamber="house", max_papers=self.max_papers
+            )
             logger.info(f"Found {len(house_papers)} House papers")
 
             # Scrape Senate papers
-            senate_papers = scraper.scrape_session_papers(chamber="senate")
+            senate_papers = scraper.scrape_session_papers(
+                chamber="senate", max_papers=self.max_papers
+            )
             logger.info(f"Found {len(senate_papers)} Senate papers")
 
             self.results["papers_scraped"] = len(house_papers) + len(senate_papers)
@@ -165,12 +177,12 @@ class DailyPipeline:
             # Use yt-dlp to list recent videos from channel
             import yt_dlp
 
-            channel_url = "https://www.youtube.com/@BarbadosParliament/videos"
+            channel_url = "https://www.youtube.com/@barbadosparliamentchannel/streams"
 
             ydl_opts = {
                 "quiet": True,
                 "extract_flat": True,
-                "playlistend": 50,  # Check last 50 videos
+                "playlistend": self.max_videos,  # Check last N videos
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -203,15 +215,28 @@ class DailyPipeline:
                                 title = video_info.get("title", "")
                                 metadata = TitlePatternMatcher.parse_video_title(title)
 
+                                session_date = metadata.extracted_session_date
+                                if isinstance(session_date, datetime):
+                                    normalized_session_date = session_date
+                                elif session_date:
+                                    normalized_session_date = datetime.combine(
+                                        session_date,
+                                        datetime.min.time(),
+                                    )
+                                else:
+                                    normalized_session_date = datetime.now(timezone.utc).replace(
+                                        tzinfo=None
+                                    )
+
                                 # Create video record
                                 video = Video(
                                     youtube_id=youtube_id,
                                     youtube_url=f"https://youtube.com/watch?v={youtube_id}",
                                     title=title,
-                                    description=video_info.get("description", ""),
-                                    session_date=metadata.extracted_session_date,
+                                    session_date=normalized_session_date,
                                     chamber=metadata.extracted_chamber,
                                     duration_seconds=video_info.get("duration"),
+                                    transcript=None,
                                     created_at=datetime.now(),
                                 )
 
@@ -240,12 +265,9 @@ class DailyPipeline:
                 papers_result = await db.execute(select(OrderPaper))
                 order_papers = papers_result.scalars().all()
 
-                # Load unmatched videos
-                matched_video_ids = select(OrderPaper.video_id).where(
-                    OrderPaper.video_id.isnot(None)
-                )
+                # Load unmatched videos (videos without order_paper_id)
                 videos_result = await db.execute(
-                    select(Video).where(not_(Video.id.in_(matched_video_ids)))
+                    select(Video).where(Video.order_paper_id.is_(None))
                 )
                 videos = videos_result.scalars().all()
 
@@ -256,10 +278,13 @@ class DailyPipeline:
                         # Extract metadata
                         metadata = TitlePatternMatcher.parse_video_title(video.title)
                         metadata.youtube_id = video.youtube_id
-                        if video.chamber:
-                            metadata.extracted_chamber = video.chamber
-                        if video.session_date:
-                            metadata.extracted_session_date = video.session_date
+
+                        # Skip videos without valid metadata (chamber and session_date)
+                        if not metadata.extracted_chamber or not metadata.extracted_session_date:
+                            logger.debug(
+                                f"Skipping video without valid metadata: {video.title[:50]}"
+                            )
+                            continue
 
                         # Run matching
                         result = self.matcher.match_video(
@@ -267,16 +292,9 @@ class DailyPipeline:
                         )
 
                         if not result.is_ambiguous and result.matched_paper_id:
-                            # Auto-accept - update OrderPaper to link to this video
+                            # Auto-accept - update Video to link to this order paper
                             if not self.dry_run:
-                                matched_paper = await db.execute(
-                                    select(OrderPaper).where(
-                                        OrderPaper.id == result.matched_paper_id
-                                    )
-                                )
-                                paper = matched_paper.scalar_one_or_none()
-                                if paper:
-                                    paper.video_id = video.id
+                                video.order_paper_id = result.matched_paper_id
                                 self.results["videos_matched_auto"] += 1
                                 logger.info(
                                     f"✓ Auto-matched: '{video.title[:40]}...' "
@@ -314,7 +332,7 @@ class DailyPipeline:
                 # Join with OrderPaper to get linked order paper data
                 videos_result = await db.execute(
                     select(Video, OrderPaper)
-                    .join(OrderPaper, OrderPaper.video_id == Video.id)
+                    .join(OrderPaper, Video.order_paper_id == OrderPaper.id)
                     .where(
                         and_(
                             Video.transcript.is_(None),  # Not yet transcribed
@@ -409,8 +427,20 @@ async def main():
     parser.add_argument(
         "--threshold",
         type=int,
-        default=90,
-        help="Confidence threshold for auto-matching (default: 90)",
+        default=75,
+        help="Confidence threshold for auto-matching (default: 75)",
+    )
+    parser.add_argument(
+        "--max-videos",
+        type=int,
+        default=50,
+        help="Maximum number of videos to fetch from YouTube (default: 50)",
+    )
+    parser.add_argument(
+        "--max-papers",
+        type=int,
+        default=None,
+        help="Maximum number of order papers to scrape (default: all)",
     )
 
     args = parser.parse_args()
@@ -424,7 +454,12 @@ async def main():
     # Create logs directory
     Path("logs").mkdir(exist_ok=True)
 
-    pipeline = DailyPipeline(dry_run=args.dry_run, match_threshold=args.threshold)
+    pipeline = DailyPipeline(
+        dry_run=args.dry_run,
+        match_threshold=args.threshold,
+        max_videos=args.max_videos,
+        max_papers=args.max_papers,
+    )
 
     await pipeline.run(steps=steps)
 

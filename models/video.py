@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,11 +19,17 @@ class Video(Base):
     youtube_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     youtube_url: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
-    chamber: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    session_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    chamber: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    session_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     sitting_number: Mapped[str | None] = mapped_column(String(50))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
-    transcript: Mapped[dict] = mapped_column(JSON, nullable=False)
+    order_paper_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("order_papers.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    transcript: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     transcript_processed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
