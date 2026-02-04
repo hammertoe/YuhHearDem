@@ -61,10 +61,10 @@ jobs:
       - name: Deploy to yhd server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.YHD_HOST }}
-          username: ${{ secrets.YHD_USER }}
+          host: ${{ vars.YHD_HOST }}
+          username: ${{ vars.YHD_USER }}
           key: ${{ secrets.YHD_SSH_KEY }}
-          port: ${{ secrets.YHD_PORT || 22 }}
+          port: ${{ vars.YHD_PORT || 22 }}
           script: |
             cd /opt/yuhheardem
             ./deploy/deploy.sh ${{ github.sha }}
