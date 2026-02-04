@@ -329,6 +329,10 @@ class GeminiClient:
                 duration_ms = (time.perf_counter() - start_time_perf) * 1000
                 self._record_usage(response, stage=stage, duration_ms=duration_ms)
 
+                parsed = getattr(response, "parsed", None)
+                if isinstance(parsed, dict):
+                    return parsed
+
                 # Parse response with enhanced error messages
                 return self._safe_json_parse(response.text or "", context="entity extraction")
 
