@@ -1,7 +1,7 @@
 """Add community tables for GraphRAG
 
 Revision ID: 006_add_community_tables
-Revises: 005_make_video_transcript_nullable
+Revises: 005
 Create Date: 2026-02-04 14:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic
 revision: str = "006_add_community_tables"
-down_revision: Union[str, None] = "005_make_video_transcript_nullable"
+down_revision: Union[str, None] = "005"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

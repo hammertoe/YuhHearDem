@@ -6,6 +6,8 @@ from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.gemini import GeminiClient
+from services.global_search import GlobalSearch
+from services.local_search import LocalSearch
 from services.parliamentary_agent_tools import ParliamentaryAgentTools
 from storage.knowledge_graph_store import KnowledgeGraphStore
 
@@ -13,22 +15,218 @@ from storage.knowledge_graph_store import KnowledgeGraphStore
 class ParliamentaryAgent:
     """Complete parliamentary agent with agentic reasoning and multi-hop queries."""
 
-    def __init__(self, gemini_client: GeminiClient, kg_store: KnowledgeGraphStore):
+    def __init__(
+        self,
+        gemini_client: GeminiClient,
+        kg_store: KnowledgeGraphStore,
+        local_search: LocalSearch | None = None,
+        global_search: GlobalSearch | None = None,
+        embedding_service=None,
+    ):
         """Initialize complete agent.
 
         Args:
             gemini_client: Gemini client for function calling
             kg_store: Knowledge graph storage layer
+            local_search: Optional local search service for entity-based queries
+            global_search: Optional global search service for thematic queries
+            embedding_service: Optional embedding service for semantic tool calls
         """
         self.client = gemini_client
         self.kg_store = kg_store
-        self.tools = ParliamentaryAgentTools(kg_store)
+        self.tools = ParliamentaryAgentTools(kg_store, embedding_service=embedding_service)
+        self.local_search = local_search
+        self.global_search = global_search
+
+    def _detect_query_type(self, user_query: str) -> str:
+        """Detect whether query should use local or global search."""
+        query_lower = user_query.lower()
+        global_indicators = [
+            "what were the main",
+            "what are the main",
+            "tell me about",
+            "what themes",
+            "what concerns",
+            "key issues",
+            "main topics",
+            "overview of",
+            "summary of",
+            "what happened in",
+            "general",
+            "broad",
+            "themes",
+            "trends",
+        ]
+
+        if any(indicator in query_lower for indicator in global_indicators):
+            return "global"
+
+        entity_patterns = [
+            "what did",
+            "what does",
+            "what do",
+            "said about",
+            "said",
+            "mentioned",
+            "discussed",
+            "asked",
+            "answered",
+            "bill",
+            "senator",
+            "minister",
+            "mp",
+            "dr.",
+            "hon.",
+            "how does",
+            "how did",
+            "when did",
+            "where did",
+        ]
+
+        if any(pattern in query_lower for pattern in entity_patterns):
+            return "local"
+
+        return "local"
+
+    async def local_search_query(
+        self,
+        db: AsyncSession,
+        user_query: str,
+        max_results: int = 10,
+    ) -> dict:
+        """Execute local search for entity-specific queries."""
+        if not self.local_search:
+            return {
+                "success": False,
+                "error": "Local search not initialized",
+                "answer": None,
+            }
+
+        results = await self.local_search.search(
+            db=db,
+            query=user_query,
+            max_results=max_results,
+        )
+
+        if not results:
+            return {
+                "success": True,
+                "answer": "I couldn't find specific information about that. Try rephrasing or asking about a different topic.",
+                "entities": [],
+                "results": [],
+            }
+
+        answer_parts = [f"Found {len(results)} relevant segments:\n"]
+        entities_found = []
+
+        for result in results[:5]:
+            answer_parts.append(f"\n**{result.video_title or 'Unknown video'}**")
+            if result.timestamp_seconds:
+                answer_parts.append(f"Time: {result.timestamp_seconds}s")
+            if result.speaker_id:
+                answer_parts.append(f"Speaker: {result.speaker_id}")
+            answer_parts.append(f'"{result.text[:300]}..."')
+
+            for entity in result.matched_entities:
+                if entity["entity_id"] not in [e.get("entity_id") for e in entities_found]:
+                    entities_found.append(
+                        {
+                            "entity_id": entity["entity_id"],
+                            "name": entity["name"],
+                            "type": entity.get("type"),
+                        }
+                    )
+
+        return {
+            "success": True,
+            "answer": "\n".join(answer_parts),
+            "entities": entities_found,
+            "results": [
+                {
+                    "segment_id": r.segment_id,
+                    "text": r.text,
+                    "video_title": r.video_title,
+                    "relevance": r.relevance_score,
+                }
+                for r in results
+            ],
+        }
+
+    async def global_search_query(
+        self,
+        db: AsyncSession,
+        user_query: str,
+        max_communities: int = 3,
+    ) -> dict:
+        """Execute global search for thematic queries."""
+        if not self.global_search:
+            return {
+                "success": False,
+                "error": "Global search not initialized",
+                "answer": None,
+            }
+
+        results = await self.global_search.search(
+            db=db,
+            query=user_query,
+            max_communities=max_communities,
+        )
+
+        if not results:
+            return {
+                "success": True,
+                "answer": "I couldn't find relevant thematic information. Try asking about specific entities or topics.",
+                "communities": [],
+                "results": [],
+            }
+
+        answer_parts = ["Here are the key themes I found:\n"]
+        entities_found = []
+
+        for result in results:
+            answer_parts.append(
+                f"\n### {result.primary_focus or 'Theme ' + str(result.community_id)}"
+            )
+            answer_parts.append(result.community_summary)
+
+            if result.member_entities:
+                key_names = [e["name"] for e in result.member_entities[:5]]
+                answer_parts.append(f"**Key figures:** {', '.join(key_names)}")
+
+            for entity in result.member_entities:
+                if entity["entity_id"] not in [e.get("entity_id") for e in entities_found]:
+                    entities_found.append(
+                        {
+                            "entity_id": entity["entity_id"],
+                            "name": entity["name"],
+                            "type": entity.get("type"),
+                        }
+                    )
+
+            if result.representative_segments:
+                quote = result.representative_segments[0]
+                answer_parts.append(f'\n*Example: "{quote["text"][:200]}..."*')
+
+        return {
+            "success": True,
+            "answer": "\n\n".join(answer_parts),
+            "entities": entities_found,
+            "communities": [
+                {
+                    "community_id": r.community_id,
+                    "summary": r.community_summary,
+                    "relevance": r.relevance_score,
+                }
+                for r in results
+            ],
+        }
 
     async def query(
         self,
         db: AsyncSession,
         user_query: str,
         max_iterations: int = 10,
+        use_graphrag: bool = True,
     ) -> dict:
         """
         Process a natural language query using multi-hop agentic reasoning.
@@ -37,10 +235,19 @@ class ParliamentaryAgent:
             db: Database session
             user_query: User's natural language question
             max_iterations: Maximum agent iterations
+            use_graphrag: Whether to use GraphRAG local/global search if available
 
         Returns:
             Structured response with citations and entities
         """
+        if use_graphrag and (self.local_search or self.global_search):
+            query_type = self._detect_query_type(user_query)
+
+            if query_type == "global" and self.global_search:
+                return await self.global_search_query(db, user_query)
+            if query_type == "local" and self.local_search:
+                return await self.local_search_query(db, user_query)
+
         iteration = 0
         context: list[str] = []
 

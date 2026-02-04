@@ -1,8 +1,4 @@
-"""Community detection service for GraphRAG.
-
-Detects communities in the entity-relationship graph using modularity-based
-community detection (Louvain algorithm via NetworkX).
-"""
+"""Community detection service for GraphRAG."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -21,74 +17,50 @@ class DetectedCommunity:
     """A detected community with its members."""
 
     community_id: int
-    members: list[str]  # Entity IDs
-    level: int  # Hierarchy level (for multi-level detection)
+    members: list[str]
+    level: int
 
 
 class CommunityDetection:
-    """Detect communities in the knowledge graph.
-
-    Uses NetworkX's greedy_modularity_communities (Louvain-like algorithm)
-    to partition entities into communities based on relationship structure.
-    """
+    """Detect communities in the knowledge graph."""
 
     def __init__(self, resolution: float = 1.0):
-        """Initialize community detection.
-
-        Args:
-            resolution: Resolution parameter for community detection.
-                       Higher values = more/smaller communities.
-                       Lower values = fewer/larger communities.
-        """
         self.resolution = resolution
 
     async def detect_communities(
         self,
         db: AsyncSession,
     ) -> list[DetectedCommunity]:
-        """Detect communities in the knowledge graph.
-
-        Args:
-            db: Database session
-
-        Returns:
-            List of detected communities
-        """
-        # Load all relationships
-        result = await db.execute(select(Relationship.source_id, Relationship.target_id))
+        """Detect communities in the knowledge graph."""
+        result = await db.execute(
+            select(Relationship.source_id, Relationship.target_id)
+        )
         relationships = result.all()
 
         if not relationships:
             return []
 
-        # Build NetworkX graph
         G = nx.Graph()
 
         for rel in relationships:
             G.add_edge(rel.source_id, rel.target_id)
 
-        # Add isolated nodes (entities with no relationships)
         result = await db.execute(select(Entity.entity_id))
         all_entities = [row[0] for row in result.all()]
         G.add_nodes_from(all_entities)
 
-        # Detect communities using greedy modularity optimization
-        # (Louvain-like algorithm in NetworkX)
         communities = nx.community.greedy_modularity_communities(
             G,
             resolution=self.resolution,
         )
 
-        # Convert to DetectedCommunity objects
         detected = []
         for idx, community in enumerate(communities):
-            detected.append(
-                DetectedCommunity(
-                    community_id=idx,
-                    members=list(community),
-                    level=1,
-                )
-            )
+            detected.append(DetectedCommunity(
+                community_id=idx,
+                members=list(community),
+                level=1,
+            ))
 
         return detected
 
@@ -97,26 +69,17 @@ class CommunityDetection:
         db: AsyncSession,
         communities: list[DetectedCommunity],
     ) -> None:
-        """Save detected communities to database.
-
-        Args:
-            db: Database session
-            communities: List of detected communities
-        """
-        # Clear existing communities
+        """Save detected communities to database."""
         await db.execute(delete(EntityCommunity))
         await db.execute(delete(CommunitySummary))
 
-        # Save new community memberships
         for community in communities:
             for entity_id in community.members:
-                db.add(
-                    EntityCommunity(
-                        entity_id=entity_id,
-                        community_id=community.community_id,
-                        community_level=community.level,
-                    )
-                )
+                db.add(EntityCommunity(
+                    entity_id=entity_id,
+                    community_id=community.community_id,
+                    community_level=community.level,
+                ))
 
         await db.commit()
 
@@ -124,14 +87,7 @@ class CommunityDetection:
         self,
         db: AsyncSession,
     ) -> list[DetectedCommunity]:
-        """Detect and save communities in one operation.
-
-        Args:
-            db: Database session
-
-        Returns:
-            List of detected communities
-        """
+        """Detect and save communities in one operation."""
         communities = await self.detect_communities(db)
         await self.save_communities(db, communities)
         return communities
@@ -140,15 +96,10 @@ class CommunityDetection:
         self,
         db: AsyncSession,
     ) -> dict[str, Any]:
-        """Get statistics about communities.
-
-        Args:
-            db: Database session
-
-        Returns:
-            Statistics dict
-        """
-        result = await db.execute(select(EntityCommunity.community_id, EntityCommunity.entity_id))
+        """Get statistics about communities."""
+        result = await db.execute(
+            select(EntityCommunity.community_id, EntityCommunity.entity_id)
+        )
         memberships = result.all()
 
         if not memberships:
@@ -160,7 +111,6 @@ class CommunityDetection:
                 "smallest_community": 0,
             }
 
-        # Count entities per community
         community_sizes: dict[int, int] = {}
         for membership in memberships:
             cid = membership.community_id
