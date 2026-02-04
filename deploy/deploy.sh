@@ -182,7 +182,6 @@ deploy() {
 
     # Run DB migrations
     log_info "Running database migrations..."
-    chmod +x deploy/migrate.sh
     ./deploy/migrate.sh
 
     # Authenticate with GHCR
