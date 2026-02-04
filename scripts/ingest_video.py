@@ -281,7 +281,13 @@ class VideoIngestor:
 
     def _log_run_summary(self, youtube_id: str) -> None:
         usage_by_stage: dict[str, dict[str, float]] = {}
-        for usage in self.client.usage_log:
+        usage_log = getattr(self.client, "usage_log", []) or []
+        if not isinstance(usage_log, list):
+            try:
+                usage_log = list(usage_log)
+            except TypeError:
+                usage_log = []
+        for usage in usage_log:
             stage = usage.get("stage", "unknown")
             entry = usage_by_stage.setdefault(
                 stage,

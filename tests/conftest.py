@@ -16,6 +16,8 @@ def set_test_database():
     """Set test database URL before any imports"""
     if "DATABASE_URL" not in os.environ:
         os.environ["DATABASE_URL"] = DEFAULT_TEST_DATABASE_URL
+    if not os.environ.get("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = "test"
     # Clear cached settings to force reload
 
     get_settings.cache_clear()
