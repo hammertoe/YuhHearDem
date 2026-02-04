@@ -67,19 +67,21 @@ health_check() {
 
     for i in $(seq 1 $max_retries); do
         local response=$(curl -sf "http://localhost:${port}/health" 2>/dev/null || true)
+        local http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/health" 2>/dev/null || echo "000")
 
         if [[ -n "$response" ]]; then
             local status=$(echo "$response" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+            local db_status=$(echo "$response" | grep -o '"database_connected":[^,}]*' | cut -d':' -f2)
             if [[ "$status" == "healthy" ]]; then
-                log_info "Health check passed on attempt $i (status: $status)"
+                log_info "Health check passed on attempt $i (status: $status, db_connected: $db_status)"
                 return 0
+            else
+                log_warn "Health check attempt $i/$max_retries: status=$status, db_connected=$db_status, response=$response"
             fi
-        fi
-
-        if [[ $i -eq 1 ]]; then
-            log_warn "Health check attempt $i/$max_retries failed. Response: $response"
         else
-            log_warn "Health check attempt $i/$max_retries failed, retrying in ${retry_interval}s..."
+            if [[ $i -eq 1 || $i -eq 5 || $i -eq 10 || $i -eq 20 || $i -eq 30 ]]; then
+                log_warn "Health check attempt $i/$max_retries failed (HTTP $http_code, response: $response)"
+            fi
         fi
         sleep $retry_interval
     done
@@ -87,11 +89,17 @@ health_check() {
     log_error "Health check failed after $max_retries attempts"
     log_error "Container logs for $container_name:"
     log_info "Fetching logs from docker..."
-    docker logs "$container_name" --tail 100 2>&1 > /tmp/container_logs.txt 2>&1 || true
-    log_info "Log file size: $(wc -l < /tmp/container_logs.txt) lines"
-    log_info "--- Container Logs Start ---"
-    cat /tmp/container_logs.txt
-    log_info "--- Container Logs End ---"
+    local log_file="/tmp/container_logs_${container_name}_$$.txt"
+    docker logs "$container_name" --tail 200 > "$log_file" 2>&1 || true
+    if [[ -s "$log_file" ]]; then
+        log_info "Log file size: $(wc -l < "$log_file") lines"
+        log_info "--- Container Logs Start ---"
+        cat "$log_file"
+        log_info "--- Container Logs End ---"
+        rm -f "$log_file"
+    else
+        log_warn "No logs available or container not found"
+    fi
     return 1
 }
 
@@ -223,9 +231,27 @@ deploy() {
     log_info "Starting $target_slot container..."
     IMAGE_TAG="${target_slot}" docker compose --env-file .env -p yuhheardem -f "$compose_file" up -d
 
-    # Give the container a moment to start up
-    log_info "Waiting 5 seconds for application to initialize..."
-    sleep 5
+    # Give the container time to start up and connect to database
+    log_info "Waiting 10 seconds for application to initialize..."
+    sleep 10
+
+    # Check if container is running
+    if ! docker ps --format '{{.Names}}' | grep -q "$target_slot"; then
+        log_error "Container failed to start!"
+        local container_name="yhd-web-${target_slot}"
+        local log_file="/tmp/container_logs_${container_name}_startup_$$.txt"
+        docker logs "$container_name" --tail 50 > "$log_file" 2>&1 || true
+        if [[ -s "$log_file" ]]; then
+            log_info "--- Startup Logs Start ---"
+            cat "$log_file"
+            log_info "--- Startup Logs End ---"
+            rm -f "$log_file"
+        fi
+        IMAGE_TAG="${target_slot}" docker compose --env-file .env -p yuhheardem -f "$compose_file" down || true
+        exit 1
+    fi
+
+    log_info "Container $target_slot is running"
 
     # Health check
     if ! health_check "$target_port"; then

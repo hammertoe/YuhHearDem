@@ -47,6 +47,7 @@ from models.order_paper import OrderPaper
 from models.video import Video
 from parsers.models import OrderPaper as ParsedOrderPaper
 from parsers.video_transcript import VideoTranscriptionParser
+from parsers import models as Parsers
 from services.gemini import GeminiClient
 from services.video_paper_matcher import TitlePatternMatcher, VideoPaperMatcher
 
@@ -362,8 +363,22 @@ class DailyPipeline:
                             session_title=order_paper_record.session_title or video.title,
                             session_date=order_paper_record.session_date,
                             sitting_number=order_paper_record.sitting_number,
-                            speakers=order_paper_record.speakers or [],
-                            agenda_items=order_paper_record.agenda_items or [],
+                            speakers=[
+                                Parsers.OrderPaperSpeaker(
+                                    name=s.get("name", ""),
+                                    title=s.get("title"),
+                                    role=s.get("role"),
+                                )
+                                for s in (order_paper_record.speakers or [])
+                            ],
+                            agenda_items=[
+                                Parsers.AgendaItem(
+                                    topic_title=a.get("topic_title", ""),
+                                    primary_speaker=a.get("primary_speaker"),
+                                    description=a.get("description"),
+                                )
+                                for a in (order_paper_record.agenda_items or [])
+                            ],
                         )
 
                         # Transcribe with order paper context using YouTube URL directly

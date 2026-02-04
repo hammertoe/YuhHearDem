@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from api.routes import chat, search, videos
 from app.config import get_settings
 from app.middleware import TimingMiddleware
+from core.database import get_engine
 from core.logging_config import setup_logging
 
 settings = get_settings()
@@ -24,6 +26,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} v0.1.0")
     logger.info(f"Environment: {settings.app_env}")
     logger.info(f"Debug mode: {settings.debug}")
+
+    # Test database connection on startup
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection verified on startup")
+    except Exception as e:
+        logger.error(f"Database connection failed on startup: {e}", exc_info=True)
+        raise
 
     yield
 
@@ -75,17 +87,20 @@ async def health():
     from core.database import get_engine
 
     db_connected = False
+    db_error = None
     try:
         engine = get_engine()
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
             db_connected = True
     except Exception as e:
-        logger.error(f"Database health check failed: {e}")
+        db_error = str(e)
+        logger.error(f"Database health check failed: {e}", exc_info=True)
 
     return {
         "status": "healthy" if db_connected else "unhealthy",
         "database_connected": db_connected,
+        "database_error": db_error,
         "version": "0.1.0",
     }
 
