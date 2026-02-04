@@ -39,6 +39,7 @@ COPY core/ ./core/
 COPY models/ ./models/
 COPY parsers/ ./parsers/
 COPY services/ ./services/
+COPY storage/ ./storage/
 COPY static/ ./static/
 COPY migrations/ ./migrations/
 COPY alembic.ini .
