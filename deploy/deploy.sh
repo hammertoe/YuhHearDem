@@ -263,13 +263,6 @@ rollback() {
 # Main
 cd "$DEPLOY_DIR"
 
-# Load environment variables
-if [[ -f "${DEPLOY_DIR}/.env" ]]; then
-    set -a
-    source "${DEPLOY_DIR}/.env"
-    set +a
-fi
-
 case "${1:-}" in
     status)
         show_status
