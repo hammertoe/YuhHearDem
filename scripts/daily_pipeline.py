@@ -380,7 +380,6 @@ class DailyPipeline:
                                 for a in (order_paper_record.agenda_items or [])
                             ],
                         )
-
                         # Transcribe with order paper context using YouTube URL directly
                         transcript, _ = parser.transcribe(
                             video_url=video.youtube_url,

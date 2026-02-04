@@ -4,10 +4,14 @@
 import argparse
 import asyncio
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google import genai
+
+load_dotenv()
 
 from app.config import get_settings
 from scripts.ingest_order_paper import OrderPaperIngestor
@@ -49,11 +53,12 @@ class FullIngestionPipeline:
         logger.info("=" * 60)
 
         settings = get_settings()
-        genai.configure(api_key=settings.google_api_key)
 
-        from app.dependencies import get_db_session
+        from core.database import get_session_maker
 
-        async with get_db_session() as db:
+        session_maker = get_session_maker()
+
+        async with session_maker() as db:
             client = GeminiClient()
 
             # Step 1: Scrape session papers
@@ -70,11 +75,12 @@ class FullIngestionPipeline:
 
             # Step 3: Ingest order papers to database
             logger.info("\n[Step 3] Ingesting order papers...")
-            ingestor = OrderPaperIngestor(db, client)
+            ingestor = OrderPaperIngestor(gemini_client=client)
 
             paper_results = []
             for paper in downloaded:
                 result = await ingestor.ingest_pdf(
+                    db_session_maker=session_maker,
                     pdf_path=Path(paper["pdf_path"]),
                     chamber=self.chamber,
                 )

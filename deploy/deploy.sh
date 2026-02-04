@@ -79,7 +79,7 @@ health_check() {
                 log_warn "Health check attempt $i/$max_retries: status=$status, db_connected=$db_status, response=$response"
             fi
         else
-            if [[ $i -eq 1 || $i -eq 5 || $i -eq 10 || $i -eq 20 || $i -eq 30 ]]; then
+            if [[ $i -eq 1 ]] || [[ $i -eq 5 ]] || [[ $i -eq 10 ]] || [[ $i -eq 20 ]] || [[ $i -eq 30 ]]; then
                 log_warn "Health check attempt $i/$max_retries failed (HTTP $http_code, response: $response)"
             fi
         fi
@@ -236,9 +236,9 @@ deploy() {
     sleep 10
 
     # Check if container is running
-    if ! docker ps --format '{{.Names}}' | grep -q "$target_slot"; then
+    local container_name="yhd-web-${target_slot}"
+    if ! docker ps --format '{{.Names}}' | grep -q "$container_name"; then
         log_error "Container failed to start!"
-        local container_name="yhd-web-${target_slot}"
         local log_file="/tmp/container_logs_${container_name}_startup_$$.txt"
         docker logs "$container_name" --tail 50 > "$log_file" 2>&1 || true
         if [[ -s "$log_file" ]]; then
@@ -246,16 +246,21 @@ deploy() {
             cat "$log_file"
             log_info "--- Startup Logs End ---"
             rm -f "$log_file"
+        else
+            log_warn "No logs available from container"
         fi
         IMAGE_TAG="${target_slot}" docker compose --env-file .env -p yuhheardem -f "$compose_file" down || true
         exit 1
     fi
 
-    log_info "Container $target_slot is running"
+    log_info "Container $container_name is running"
 
     # Health check
+    log_info "Container is up, beginning health check..."
     if ! health_check "$target_port"; then
         log_error "Deployment failed! Container not healthy."
+        log_error "TIP: Check DATABASE_URL in .env file matches docker-compose config"
+        log_error "     DATABASE_URL should use hostname 'yhd-postgres' for production"
         IMAGE_TAG="${target_slot}" docker compose --env-file .env -p yuhheardem -f "$compose_file" down || true
         exit 1
     fi

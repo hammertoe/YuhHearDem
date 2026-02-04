@@ -58,6 +58,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Sync deploy scripts to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.YHD_HOST }}
+          username: ${{ vars.YHD_USER }}
+          key: ${{ secrets.YHD_SSH_KEY }}
+          port: ${{ vars.YHD_PORT || 22 }}
+          script: |
+            cd /opt/yuhheardem
+            git pull origin main
+            echo "Deploy scripts synced from git"
+
       - name: Deploy to yhd server
         uses: appleboy/ssh-action@v1.0.3
         with:
