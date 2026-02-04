@@ -1,5 +1,7 @@
 """Parliamentary agent - Complete implementation with multi-hop reasoning"""
 
+from typing import Any
+
 from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,51 +42,110 @@ class ParliamentaryAgent:
             Structured response with citations and entities
         """
         iteration = 0
-        context = []
+        context: list[str] = []
 
-        entities_found = []
+        entities_found: list[dict] = []
 
         while iteration < max_iterations:
             iteration += 1
 
             prompt = self._build_agent_prompt(user_query, context, iteration, max_iterations)
             tools_dict = self.tools.get_tools_dict()
+            latest_tool_results: list[dict] = []
 
-            response = await self.client.client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[
+            if self._is_latest_session_query(user_query):
+                latest = await self.tools.get_latest_session(db=db)
+                if latest.get("status") == "success":
+                    latest_tool_results = [
+                        {"tool": "get_latest_session", "data": latest.get("data", {})}
+                    ]
+
+            gemini_tools = [
+                types.Tool(
+                    function_declarations=[
                         types.FunctionDeclaration(**decl)
                         for decl in tools_dict["function_declarations"]
                     ]
-                ),
+                )
+            ]
+
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=prompt)],
+                )
+            ]
+
+            response = await self._call_llm(contents, gemini_tools)
+            response, circuit_broken, last_tool_results = await self._execute_tool_loop(
+                response,
+                contents,
+                gemini_tools,
+                tools_dict.get("tools", {}),
+                db,
             )
 
-            response_text = response.text
-            if response_text is None:
-                response_text = ""
+            if circuit_broken:
+                fallback_answer = None
+                if last_tool_results:
+                    fallback_answer = self._generate_answer_from_results(
+                        last_tool_results, user_query
+                    )
+                return {
+                    "success": True,
+                    "answer": fallback_answer
+                    or "I got a bit confused there. Could you try rephrasing that?",
+                    "entities": entities_found,
+                    "context": context,
+                    "iteration": iteration,
+                }
 
-            function_calls, part_text = self._extract_function_calls_and_text(response)
-            tool_results = []
+            response_text = response.text or ""
+            if not response_text and last_tool_results:
+                response_text = self._generate_answer_from_results(last_tool_results, user_query)
 
-            if function_calls:
-                tool_results = await self._execute_tool_calls(
-                    db,
-                    function_calls,
-                    tools_dict.get("tools", {}),
+            if self._is_latest_session_query(user_query) and not last_tool_results:
+                latest = await self.tools.get_latest_session(db=db)
+                if latest.get("status") == "success":
+                    response_text = self._generate_answer_from_results(
+                        [{"tool": "get_latest_session", "data": latest.get("data", {})}],
+                        user_query,
+                    )
+
+            result = self._parse_agent_response(response_text, user_query)
+
+            force_with_results = None
+            if latest_tool_results:
+                answer_text = result.get("answer", "") if result.get("success") else ""
+                if self._should_force_latest_answer(answer_text, latest_tool_results):
+                    force_with_results = latest_tool_results
+
+            if (
+                not force_with_results
+                and last_tool_results
+                and self._is_latest_session_query(user_query)
+            ):
+                latest_result = next(
+                    (r for r in last_tool_results if r.get("tool") == "get_latest_session"),
+                    None,
+                )
+                if latest_result:
+                    answer_text = result.get("answer", "") if result.get("success") else ""
+                    if self._should_force_latest_answer(answer_text, [latest_result]):
+                        force_with_results = [latest_result]
+
+            if force_with_results:
+                forced_entities = self._extract_entities_from_result(
+                    {"tool_results": force_with_results, "success": True}
                 )
                 result = {
                     "success": True,
-                    "answer": self._generate_answer_from_results(tool_results, user_query),
+                    "answer": self._generate_answer_from_results(force_with_results, user_query),
                     "context": [],
                     "iteration": 0,
-                    "tool_results": tool_results,
+                    "tool_results": force_with_results,
+                    "entities": forced_entities,
                 }
-            else:
-                if not response_text and part_text:
-                    response_text = part_text
-                result = self._parse_agent_response(response_text, user_query)
 
             if result["success"]:
                 # Extract entities found during this iteration
@@ -151,6 +212,7 @@ class ParliamentaryAgent:
                     "  - search_by_date_range(date_from, date_to, chamber): Find sessions",
                     "  - search_by_speaker(speaker_id): Find all speeches",
                     "  - search_semantic(query_text, limit): Semantic search",
+                    "  - get_latest_session(chamber): Latest session with highlights",
                 ]
             )
 
@@ -168,7 +230,8 @@ Instructions:
 4. Synthesize information from all tools before answering.
 5. Provide specific, well-supported answers with citations.
 6. Always include: video IDs, timestamps, and direct quotes.
-7. If information is missing, clearly state that.
+7. If the user asks about the last or latest session, call get_latest_session first and include at least one exact quote in double quotes.
+8. If information is missing, clearly state that.
 
 Current iteration: {iteration}/{max_iterations}
 
@@ -207,7 +270,7 @@ Begin your analysis."""
         """Parse function call blocks from response."""
         import json
 
-        tool_results = []
+        tool_results: list[dict[str, Any]] = []
         lines = response_text.split("\n")
 
         current_tool = None
@@ -218,7 +281,8 @@ Begin your analysis."""
                 if current_tool and current_data_lines:
                     try:
                         data = json.loads("\n".join(current_data_lines))
-                        tool_results[-1]["data"].update(data)
+                        if isinstance(data, dict):
+                            tool_results[-1]["data"].update(data)
                     except json.JSONDecodeError:
                         pass
 
@@ -244,7 +308,8 @@ Begin your analysis."""
         if current_tool and current_data_lines:
             try:
                 data = json.loads("\n".join(current_data_lines))
-                tool_results[-1]["data"].update(data)
+                if isinstance(data, dict):
+                    tool_results[-1]["data"].update(data)
             except json.JSONDecodeError:
                 pass
 
@@ -256,12 +321,23 @@ Begin your analysis."""
             "tool_results": tool_results,
         }
 
-    def _extract_function_calls_and_text(self, response) -> tuple[list, str]:
-        """Extract function calls and any plain text from the response parts."""
-        function_calls = []
-        text_chunks = []
+    async def _call_llm(
+        self,
+        contents: list[types.Content],
+        gemini_tools: list[types.Tool],
+    ) -> types.GenerateContentResponse:
+        """Call Gemini with the provided contents and tools."""
+        return await self.client.client.aio.models.generate_content(
+            model=self.client.model,
+            contents=contents,
+            config=types.GenerateContentConfig(tools=gemini_tools),  # type: ignore[arg-type]
+        )
 
+    def _get_function_calls(self, response: types.GenerateContentResponse) -> list:
+        """Extract function calls from Gemini response parts."""
+        function_calls = []
         candidates = getattr(response, "candidates", []) or []
+
         for candidate in candidates:
             content = getattr(candidate, "content", None)
             if not content:
@@ -271,44 +347,89 @@ Begin your analysis."""
                 function_call = getattr(part, "function_call", None)
                 if function_call:
                     function_calls.append(function_call)
-                text = getattr(part, "text", None)
-                if text:
-                    text_chunks.append(text)
 
-        return function_calls, "\n".join(text_chunks).strip()
+        return function_calls
 
-    async def _execute_tool_calls(self, db: AsyncSession, calls: list, tools: dict) -> list[dict]:
-        """Execute tool calls and return tool results list."""
-        results = []
+    async def _execute_tool_loop(
+        self,
+        response: types.GenerateContentResponse,
+        contents: list[types.Content],
+        gemini_tools: list[types.Tool],
+        tools: dict,
+        db: AsyncSession,
+        max_tool_iterations: int = 5,
+    ) -> tuple[types.GenerateContentResponse, bool, list[dict]]:
+        """Execute tool calls in a loop until none remain."""
+        function_calls = self._get_function_calls(response)
+        last_tool_results: list[dict] = []
+        iteration = 0
+
+        while function_calls:
+            iteration += 1
+            if iteration > max_tool_iterations:
+                return response, True, last_tool_results
+
+            tool_results, tool_response_parts = await self._execute_tool_calls(
+                db=db,
+                calls=function_calls,
+                tools=tools,
+            )
+
+            last_tool_results = tool_results
+
+            candidate_content = None
+            candidates = getattr(response, "candidates", []) or []
+            if candidates:
+                candidate_content = getattr(candidates[0], "content", None)
+
+            if not candidate_content:
+                return response, False, last_tool_results
+
+            contents.append(candidate_content)
+
+            contents.append(types.Content(role="user", parts=tool_response_parts))
+
+            response = await self._call_llm(contents, gemini_tools)
+            function_calls = self._get_function_calls(response)
+
+        return response, False, last_tool_results
+
+    async def _execute_tool_calls(
+        self,
+        db: AsyncSession,
+        calls: list,
+        tools: dict,
+    ) -> tuple[list[dict], list[types.Part]]:
+        """Execute tool calls and return results and response parts."""
+        results: list[dict] = []
+        response_parts: list[types.Part] = []
 
         for call in calls:
-            tool_name = getattr(call, "name", None)
+            tool_name = getattr(call, "name", None) or "unknown_tool"
             tool_args = getattr(call, "args", {}) or {}
             tool_fn = tools.get(tool_name)
 
             if not tool_fn:
-                results.append(
-                    {
-                        "tool": tool_name or "unknown",
-                        "data": {
-                            "status": "error",
-                            "error": f"Unknown tool: {tool_name}",
-                        },
-                    }
+                error_payload = {
+                    "status": "error",
+                    "error": f"Unknown tool: {tool_name}",
+                }
+                results.append({"tool": tool_name, "data": error_payload})
+                response_parts.append(
+                    types.Part.from_function_response(name=tool_name, response=error_payload)
                 )
                 continue
 
             tool_response = await tool_fn(db, **tool_args)
-            results.append(
-                {
-                    "tool": tool_name,
-                    "data": tool_response.get("data", {})
-                    if isinstance(tool_response, dict)
-                    else {},
-                }
+            if not isinstance(tool_response, dict):
+                tool_response = {"status": "error", "error": "Tool response not a dict"}
+
+            results.append({"tool": tool_name, "data": tool_response.get("data", {})})
+            response_parts.append(
+                types.Part.from_function_response(name=tool_name, response=tool_response)
             )
 
-        return results
+        return results, response_parts
 
     def _extract_context_from_response(self, result: dict) -> list[str]:
         """Extract context for next iteration."""
@@ -332,7 +453,32 @@ Begin your analysis."""
                 mentions = tool_result["data"].get("mentions", [])
                 context.append(f"Found {len(mentions)} mentions")
 
+            elif tool == "get_latest_session" and tool_result["data"]:
+                title = tool_result["data"].get("title", "Latest session")
+                date = tool_result["data"].get("session_date", "Unknown date")
+                context.append(f"Latest session: {title} ({date})")
+
         return context
+
+    def _is_latest_session_query(self, user_query: str) -> bool:
+        """Detect if the user is asking about the latest session."""
+        query = user_query.lower()
+        return "last session" in query or "latest session" in query
+
+    def _should_force_latest_answer(self, answer_text: str, tool_results: list[dict]) -> bool:
+        """Determine if we should override with latest session tool data."""
+        if not answer_text.strip():
+            return True
+
+        latest_data = tool_results[0].get("data", {}) if tool_results else {}
+        topics = [t.lower() for t in latest_data.get("topics", []) if isinstance(t, str)]
+        quotes = [q.lower() for q in latest_data.get("quotes", []) if isinstance(q, str)]
+
+        answer_lower = answer_text.lower()
+        has_topic = any(topic in answer_lower for topic in topics)
+        has_quote = any(quote in answer_lower for quote in quotes)
+
+        return not (has_topic or has_quote)
 
     def _extract_entities_from_result(self, result: dict) -> list[dict]:
         """Extract entities from tool results."""
@@ -354,6 +500,9 @@ Begin your analysis."""
                         }
                     )
 
+        print(
+            f"DEBUG _extract_entities_from_result: tool_results={result.get('tool_results', [])}, entities={entities}"
+        )
         return entities
 
     def _generate_answer_from_results(self, tool_results: list[dict], user_query: str) -> str:
@@ -378,6 +527,71 @@ Begin your analysis."""
                     entities_mentioned.append(
                         f"- {entity['name']} (Type: {entity.get('entity_type', 'Unknown')})"
                     )
+
+            if tool == "get_latest_session" and data:
+                session_title = data.get("title") or "Latest session"
+                session_date = data.get("session_date") or "Unknown date"
+                topics = data.get("topics", [])
+                quotes = data.get("quotes", [])
+
+                answer_parts.append(f"Latest session: {session_title} ({session_date}).")
+                if topics:
+                    answer_parts.append("Topics discussed:")
+                    answer_parts.extend([f"- {topic}" for topic in topics])
+                if quotes:
+                    answer_parts.append("Notable quotes:")
+                    answer_parts.extend([f'"{quote}"' for quote in quotes[:2]])
+
+            elif tool in ("search_by_date_range", "search_by_speaker") and data.get("sessions"):
+                videos = data.get("sessions", [])
+                if videos:
+                    answer_parts.append(f"Found {len(videos)} session(s):")
+                    for video in videos:
+                        title = video.get("title", "Unknown session")
+                        date = (
+                            video.get("session_date", "Unknown date")[:10]
+                            if isinstance(video.get("session_date"), str)
+                            else video.get("session_date")
+                        )
+                        answer_parts.append(f"\n{title} ({date})")
+
+                        transcript = video.get("transcript", {})
+                        if transcript.get("agenda_items"):
+                            answer_parts.append("Topics discussed:")
+                            for item in transcript.get("agenda_items", [])[:3]:
+                                topic = item.get("topic_title", "")
+                                if topic:
+                                    answer_parts.append(f"- {topic}")
+
+                            for item in transcript.get("agenda_items", [])[:2]:
+                                for block in item.get("speech_blocks", [])[:2]:
+                                    for sentence in block.get("sentences", [])[:2]:
+                                        text = sentence.get("text", "")
+                                        if text and len(answer_parts) < 15:
+                                            answer_parts.append(f'"{text}"')
+                                            break
+                                    if len(answer_parts) >= 15:
+                                        break
+                                if len(answer_parts) >= 15:
+                                    break
+                            if len(answer_parts) >= 15:
+                                break
+
+            elif tool == "search_semantic" and data.get("results"):
+                results = data.get("results", [])
+                if results:
+                    answer_parts.append(f"Found {len(results)} relevant segment(s):")
+                    for result in results[:3]:
+                        text = result.get("text", "")
+                        video_title = result.get("video_title", "Unknown video")
+                        if text:
+                            answer_parts.append(f"\nFrom {video_title}:")
+                            answer_parts.append(f'"{text}"')
+                            timestamp = result.get("timestamp")
+                            if timestamp:
+                                answer_parts.append(f"Timestamp: {timestamp}s")
+                        if len(answer_parts) >= 15:
+                            break
 
             elif tool == "get_relationships" and data.get("relationships"):
                 relationships = data.get("relationships", [])
@@ -410,8 +624,7 @@ Begin your analysis."""
 
         if mentions_with_timestamps:
             answer_parts.append("\n**Citations:**")
-            for m in mentions_with_timestamps[:5]:
-                answer_parts.append(f"- {m.get('context', '')} (at {m.get('timestamp', '0')}s)")
+            answer_parts.extend(mentions_with_timestamps[:5])
 
         answer_parts.append(
             "\n\nNote: For more detailed information about any entity, use the get_entity_details tool."

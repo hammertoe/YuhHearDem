@@ -7,14 +7,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-# Test database URL (using PostgreSQL with pgvector)
-TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
+# Default test database URL (PostgreSQL with pgvector)
+DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
 
 
 @pytest.fixture(autouse=True, scope="session")
 def set_test_database():
     """Set test database URL before any imports"""
-    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+    if "DATABASE_URL" not in os.environ:
+        os.environ["DATABASE_URL"] = DEFAULT_TEST_DATABASE_URL
     # Clear cached settings to force reload
 
     get_settings.cache_clear()
@@ -28,25 +29,37 @@ from core.database import Base, reset_engine
 async def db_engine():
     """Create test database engine"""
     from sqlalchemy import text
+    from sqlalchemy.pool import StaticPool
 
-    engine = create_async_engine(
-        TEST_DATABASE_URL,
-        poolclass=NullPool,
-        echo=False,
-    )
+    database_url = os.environ.get("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
+    engine_kwargs: dict = {"echo": False}
+
+    if database_url.startswith("sqlite"):
+        engine_kwargs.update(
+            {
+                "poolclass": StaticPool,
+                "connect_args": {"check_same_thread": False},
+            }
+        )
+    else:
+        engine_kwargs["poolclass"] = NullPool
+
+    engine = create_async_engine(database_url, **engine_kwargs)
 
     async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        if not database_url.startswith("sqlite"):
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        if not database_url.startswith("sqlite"):
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
     await engine.dispose()

@@ -98,6 +98,9 @@ class KnowledgeGraphStore:
         Returns:
             List of mentions
         """
+        if not entity_id:
+            return []
+
         query = select(Mention).where(Mention.entity_id == entity_id)
 
         if video_id:
@@ -145,7 +148,7 @@ class KnowledgeGraphStore:
         date_from: str | None = None,
         date_to: str | None = None,
         chamber: str | None = None,
-    ) -> list[Video]:
+    ) -> list[dict]:
         """
         Search for sessions within date range.
 
@@ -163,10 +166,16 @@ class KnowledgeGraphStore:
         query = select(Video)
 
         if date_from:
-            dt = datetime.strptime(date_from, "%Y-%m-%d")
+            try:
+                dt = datetime.strptime(date_from, "%Y-%m-%d")
+            except ValueError:
+                dt = datetime.strptime(date_from, "%Y-%m-%dT%H:%M:%S")
             query = query.where(Video.session_date >= dt)
         if date_to:
-            dt = datetime.strptime(date_to, "%Y-%m-%d")
+            try:
+                dt = datetime.strptime(date_to, "%Y-%m-%d")
+            except ValueError:
+                dt = datetime.strptime(date_to, "%Y-%m-%dT%H:%M:%S")
             query = query.where(Video.session_date <= dt)
 
         if chamber:
@@ -179,11 +188,58 @@ class KnowledgeGraphStore:
 
         return [v.to_dict() for v in videos]
 
+    async def get_latest_session(self, db: AsyncSession, chamber: str | None = None) -> dict | None:
+        """Get the most recent session and key transcript highlights."""
+        query = select(Video)
+
+        if chamber:
+            query = query.where(Video.chamber == chamber)
+
+        query = query.order_by(Video.session_date.desc()).limit(1)
+
+        result = await db.execute(query)
+        video = result.scalar_one_or_none()
+
+        if not video:
+            return None
+
+        transcript = video.transcript or {}
+        topics: list[str] = []
+        quotes: list[str] = []
+
+        for item in transcript.get("agenda_items", []):
+            topic_title = item.get("topic_title")
+            if topic_title:
+                topics.append(topic_title)
+
+            for block in item.get("speech_blocks", []):
+                for sentence in block.get("sentences", []):
+                    text = sentence.get("text")
+                    if text:
+                        quotes.append(text)
+                    if len(quotes) >= 3:
+                        break
+                if len(quotes) >= 3:
+                    break
+            if len(quotes) >= 3:
+                break
+
+        return {
+            "video_id": str(video.id),
+            "youtube_url": video.youtube_url,
+            "title": video.title,
+            "session_date": video.session_date.isoformat() if video.session_date else None,
+            "chamber": video.chamber,
+            "sitting_number": video.sitting_number,
+            "topics": topics,
+            "quotes": quotes,
+        }
+
     async def search_by_speaker(
         self,
         db: AsyncSession,
         speaker_id: str,
-    ) -> list[Video]:
+    ) -> list[dict]:
         """
         Find all videos where this speaker appears.
 
@@ -218,6 +274,7 @@ class KnowledgeGraphStore:
         Returns:
             List of matching sentence data
         """
+
         from models.vector_embedding import VectorEmbedding
 
         query = select(VectorEmbedding)
@@ -228,13 +285,63 @@ class KnowledgeGraphStore:
         result = await db.execute(query)
         embeddings = result.scalars().all()
 
-        return [
-            {
-                "text": emb.text,
-                "video_id": str(emb.video_id),
-                "speaker_id": emb.speaker_id,
-                "timestamp_seconds": emb.timestamp_seconds,
-                "relevance": 0.95,
-            }
-            for emb in embeddings
-        ]
+        if embeddings:
+            return [
+                {
+                    "text": emb.text,
+                    "video_id": str(emb.video_id),
+                    "video_title": emb.video.title,
+                    "speaker_id": emb.speaker_id,
+                    "timestamp_seconds": emb.timestamp_seconds,
+                    "relevance": 0.95,
+                }
+                for emb in embeddings
+            ]
+
+        # Fallback: if no embeddings, search videos and return transcript segments
+        query = select(Video).order_by(Video.session_date.desc()).limit(limit)
+        result = await db.execute(query)
+        videos = result.scalars().all()
+
+        results: list[dict] = []
+        for video in videos:
+            transcript = video.transcript or {}
+
+            # First add topic titles as results
+            for item in transcript.get("agenda_items", []):
+                topic_title = item.get("topic_title", "")
+                if topic_title and len(results) < limit:
+                    results.append(
+                        {
+                            "text": f"Topic: {topic_title}",
+                            "video_id": str(video.id),
+                            "video_title": video.title,
+                            "timestamp_seconds": 0,
+                            "relevance": 0.9,
+                        }
+                    )
+
+            # Then add sentences
+            if len(results) < limit:
+                for item in transcript.get("agenda_items", []):
+                    for block in item.get("speech_blocks", []):
+                        for sentence in block.get("sentences", []):
+                            text = sentence.get("text", "")
+                            if text and len(results) < limit:
+                                results.append(
+                                    {
+                                        "text": text,
+                                        "video_id": str(video.id),
+                                        "video_title": video.title,
+                                        "timestamp_seconds": sentence.get("timestamp_seconds", 0),
+                                        "relevance": 0.5,
+                                    }
+                                )
+                            if len(results) >= limit:
+                                break
+                        if len(results) >= limit:
+                            break
+                    if len(results) >= limit:
+                        break
+
+        return results

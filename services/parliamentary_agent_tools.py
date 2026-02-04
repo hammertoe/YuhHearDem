@@ -1,5 +1,7 @@
 """Parliamentary agent tools for function calling"""
 
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from storage.knowledge_graph_store import KnowledgeGraphStore
@@ -74,7 +76,7 @@ class ParliamentaryAgentTools:
     async def get_mentions(
         self,
         db: AsyncSession,
-        entity_id: str,
+        entity_id: str | None = None,
         video_id: str | None = None,
         limit: int = 10,
     ) -> dict:
@@ -215,7 +217,24 @@ class ParliamentaryAgentTools:
             },
         }
 
-    def get_tools_dict(self) -> dict[str, callable]:
+    async def get_latest_session(
+        self,
+        db: AsyncSession,
+        chamber: str | None = None,
+    ) -> dict:
+        """Tool: Get the most recent session and highlights."""
+        latest = await self.kg_store.get_latest_session(db, chamber)
+        if latest:
+            return {
+                "status": "success",
+                "data": latest,
+            }
+        return {
+            "status": "error",
+            "error": "No sessions found.",
+        }
+
+    def get_tools_dict(self) -> dict[str, Any]:
         """
         Get tools for Gemini function calling.
 
@@ -234,6 +253,7 @@ class ParliamentaryAgentTools:
                 ),
                 "search_by_speaker": lambda db, **kwargs: self.search_by_speaker(db, **kwargs),
                 "search_semantic": lambda db, **kwargs: self.search_semantic(db, **kwargs),
+                "get_latest_session": lambda db, **kwargs: self.get_latest_session(db, **kwargs),
             },
         }
 
@@ -277,7 +297,7 @@ class ParliamentaryAgentTools:
                         "video_id": {"type": "string"},
                         "limit": {"type": "integer"},
                     },
-                    "required": ["entity_id"],
+                    "required": [],
                 },
             },
             {
@@ -324,6 +344,16 @@ class ParliamentaryAgentTools:
                         "limit": {"type": "integer"},
                     },
                     "required": ["query_text"],
+                },
+            },
+            {
+                "name": "get_latest_session",
+                "description": "Get the most recent session and its highlights.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "chamber": {"type": "string"},
+                    },
                 },
             },
         ]

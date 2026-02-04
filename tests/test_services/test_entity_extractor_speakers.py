@@ -20,6 +20,28 @@ class DummyGeminiClient:
 
 def test_extract_from_transcript_adds_speaker_entities(monkeypatch):
     """Speakers should be promoted to first-class entities."""
+
+    class DummyGeminiClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def extract_entities_and_concepts(
+            self, transcript_data, prompt, response_schema=None, **kwargs
+        ):
+            if response_schema and "entities" in response_schema.get("properties", {}):
+                return {
+                    "entities": [
+                        {
+                            "entity_id": "speaker-123",
+                            "entity_type": "person",
+                            "name": "Hon. Jane Doe",
+                            "canonical_name": "Hon. Jane Doe",
+                            "aliases": [],
+                        }
+                    ]
+                }
+            return {"relationships": []}
+
     monkeypatch.setattr(entity_extractor_module, "GeminiClient", DummyGeminiClient)
 
     transcript = SessionTranscript(
@@ -57,6 +79,12 @@ def test_entity_extractor_accepts_api_key(monkeypatch):
         def __init__(self, api_key=None, thinking_budget=None):
             captured["api_key"] = api_key
 
+        def extract_entities_and_concepts(
+            self, transcript_data, prompt, response_schema=None, stage="kg_extraction"
+        ):
+            pass
+            return {"relationships": []}
+
     monkeypatch.setattr(entity_extractor_module, "GeminiClient", DummyGeminiClient)
 
     entity_extractor_module.EntityExtractor(api_key="test-key")
@@ -71,7 +99,9 @@ def test_extract_from_transcript_handles_mentions(monkeypatch):
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-        def extract_entities_and_concepts(self, transcript_data, prompt, response_schema=None):
+        def extract_entities_and_concepts(
+            self, transcript_data, prompt, response_schema=None, stage="kg_extraction"
+        ):
             if response_schema and "entities" in response_schema.get("properties", {}):
                 return {
                     "entities": [

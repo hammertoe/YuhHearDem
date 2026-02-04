@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import JSON, TEXT, DateTime, ForeignKey, Integer, String
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,10 +12,20 @@ from core.database import Base
 
 try:
     from pgvector.sqlalchemy import Vector
-
-    VECTOR = Vector
 except ImportError:
-    VECTOR = None
+    Vector = None
+
+
+class EmbeddingVector(TypeDecorator):
+    """Dialect-aware embedding column."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if Vector and dialect.name == "postgresql":
+            return dialect.type_descriptor(Vector(768))
+        return dialect.type_descriptor(JSON())
 
 
 class TranscriptSegment(Base):
@@ -39,9 +50,6 @@ class TranscriptSegment(Base):
     text: Mapped[str] = mapped_column(TEXT, nullable=False)
     embedding_model: Mapped[str | None] = mapped_column(String(80))
     embedding_version: Mapped[str | None] = mapped_column(String(40))
-    if VECTOR:
-        embedding: Mapped[list] = mapped_column(VECTOR(768), nullable=False)
-    else:
-        embedding: Mapped[list] = mapped_column(JSON, nullable=False)
+    embedding: Mapped[list] = mapped_column(EmbeddingVector(), nullable=False)
     meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
