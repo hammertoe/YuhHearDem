@@ -12,9 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from thefuzz import fuzz
 
 from models.entity import Entity
-from models.relationship import Relationship
 from models.transcript_segment import TranscriptSegment
-from models.video import Video
 from services.embeddings import EmbeddingService
 from services.query_entity_extractor import QueryEntityExtractor
 from storage.knowledge_graph_store import KnowledgeGraphStore
@@ -83,9 +81,7 @@ class LocalSearch:
         neighborhood = await self._expand_neighborhood(db, entity_ids, max_hops)
 
         all_entity_ids = set(entity_ids) | neighborhood["related_entities"]
-        segments = await self._get_segments_for_entities(
-            db, all_entity_ids, segments_per_entity
-        )
+        segments = await self._get_segments_for_entities(db, all_entity_ids, segments_per_entity)
 
         ranked_results = self._rerank_results(
             segments,
@@ -106,21 +102,22 @@ class LocalSearch:
         for qe in query_entities:
             result = await db.execute(
                 select(Entity).where(
-                    (Entity.name.ilike(qe.name)) |
-                    (Entity.canonical_name.ilike(qe.name))
+                    (Entity.name.ilike(qe.name)) | (Entity.canonical_name.ilike(qe.name))
                 )
             )
             entity = result.scalar_one_or_none()
 
             if entity:
-                matched.append(MatchedEntity(
-                    query_name=qe.name,
-                    entity_id=entity.entity_id,
-                    entity_name=entity.name,
-                    entity_type=entity.entity_type,
-                    match_type="exact",
-                    match_score=100.0,
-                ))
+                matched.append(
+                    MatchedEntity(
+                        query_name=qe.name,
+                        entity_id=entity.entity_id,
+                        entity_name=entity.name,
+                        entity_type=entity.entity_type,
+                        match_type="exact",
+                        match_score=100.0,
+                    )
+                )
                 continue
 
             result = await db.execute(select(Entity))
@@ -143,14 +140,16 @@ class LocalSearch:
                         best_match = entity
 
             if best_match and best_score >= self.fuzzy_threshold:
-                matched.append(MatchedEntity(
-                    query_name=qe.name,
-                    entity_id=best_match.entity_id,
-                    entity_name=best_match.name,
-                    entity_type=best_match.entity_type,
-                    match_type="fuzzy",
-                    match_score=best_score,
-                ))
+                matched.append(
+                    MatchedEntity(
+                        query_name=qe.name,
+                        entity_id=best_match.entity_id,
+                        entity_name=best_match.name,
+                        entity_type=best_match.entity_type,
+                        match_type="fuzzy",
+                        match_score=best_score,
+                    )
+                )
 
         return matched
 
@@ -207,11 +206,13 @@ class LocalSearch:
         for row in rows:
             related_entities.add(row.entity_id)
             if row.hop_count > 0:
-                relationships.append({
-                    "entity_id": row.entity_id,
-                    "hop_count": row.hop_count,
-                    "path": row.path,
-                })
+                relationships.append(
+                    {
+                        "entity_id": row.entity_id,
+                        "hop_count": row.hop_count,
+                        "path": row.path,
+                    }
+                )
 
         return {
             "related_entities": related_entities,
@@ -257,16 +258,18 @@ class LocalSearch:
                     "entities": [],
                 }
 
-            segment_map[seg_id]["entities"].append({
-                "entity_id": row.Entity.entity_id,
-                "name": row.Entity.name,
-                "type": row.Entity.entity_type,
-                "importance": row.Entity.importance_score,
-                "context": row.Mention.context,
-            })
+            segment_map[seg_id]["entities"].append(
+                {
+                    "entity_id": row.Entity.entity_id,
+                    "name": row.Entity.name,
+                    "type": row.Entity.entity_type,
+                    "importance": row.Entity.importance_score,
+                    "context": row.Mention.context,
+                }
+            )
 
         segments = []
-        entity_segment_counts = {eid: 0 for eid in entity_ids}
+        entity_segment_counts = dict.fromkeys(entity_ids, 0)
 
         for seg_id, data in segment_map.items():
             has_new_entity = False
@@ -277,14 +280,16 @@ class LocalSearch:
                     has_new_entity = True
 
             if has_new_entity:
-                segments.append({
-                    "segment_id": seg_id,
-                    "text": data["segment"].text,
-                    "video_id": str(data["segment"].video_id),
-                    "speaker_id": data["segment"].speaker_id,
-                    "timestamp_seconds": data["segment"].start_time_seconds,
-                    "entities": data["entities"],
-                })
+                segments.append(
+                    {
+                        "segment_id": seg_id,
+                        "text": data["segment"].text,
+                        "video_id": str(data["segment"].video_id),
+                        "speaker_id": data["segment"].speaker_id,
+                        "timestamp_seconds": data["segment"].start_time_seconds,
+                        "entities": data["entities"],
+                    }
+                )
 
         return segments
 
@@ -309,8 +314,7 @@ class LocalSearch:
             match_confidence = avg_match_score / 100.0
 
             min_hops = min(
-                (rel_map.get(e["entity_id"], {}).get("hop_count", 0)
-                 for e in seg["entities"]),
+                (rel_map.get(e["entity_id"], {}).get("hop_count", 0) for e in seg["entities"]),
                 default=0,
             )
             proximity = 1.0 / (1 + min_hops)
@@ -322,17 +326,19 @@ class LocalSearch:
                 if entity["entity_id"] in rel_map:
                     path_info.append(rel_map[entity["entity_id"]])
 
-            results.append(LocalSearchResult(
-                segment_id=seg["segment_id"],
-                text=seg["text"],
-                video_id=seg["video_id"],
-                video_title="",  # Will be filled later
-                speaker_id=seg["speaker_id"],
-                timestamp_seconds=seg["timestamp_seconds"],
-                relevance_score=score,
-                matched_entities=seg["entities"],
-                relationship_path=path_info,
-            ))
+            results.append(
+                LocalSearchResult(
+                    segment_id=seg["segment_id"],
+                    text=seg["text"],
+                    video_id=seg["video_id"],
+                    video_title="",  # Will be filled later
+                    speaker_id=seg["speaker_id"],
+                    timestamp_seconds=seg["timestamp_seconds"],
+                    relevance_score=score,
+                    matched_entities=seg["entities"],
+                    relationship_path=path_info,
+                )
+            )
 
         results.sort(key=lambda x: x.relevance_score, reverse=True)
 

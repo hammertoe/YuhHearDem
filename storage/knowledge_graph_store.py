@@ -1,13 +1,11 @@
 """Knowledge graph storage layer"""
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from models.entity import Entity
 from models.mention import Mention
 from models.relationship import Relationship
-from models.transcript_segment import TranscriptSegment
 from models.video import Video
 from services.embeddings import EmbeddingService
 
@@ -297,7 +295,7 @@ class KnowledgeGraphStore:
         # embedding <=> query_vector gives cosine distance
         # 1 - (embedding <=> query_vector) gives cosine similarity
         stmt = text(f"""
-            SELECT 
+            SELECT
                 id,
                 video_id,
                 segment_id,

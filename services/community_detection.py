@@ -32,9 +32,7 @@ class CommunityDetection:
         db: AsyncSession,
     ) -> list[DetectedCommunity]:
         """Detect communities in the knowledge graph."""
-        result = await db.execute(
-            select(Relationship.source_id, Relationship.target_id)
-        )
+        result = await db.execute(select(Relationship.source_id, Relationship.target_id))
         relationships = result.all()
 
         if not relationships:
@@ -56,11 +54,13 @@ class CommunityDetection:
 
         detected = []
         for idx, community in enumerate(communities):
-            detected.append(DetectedCommunity(
-                community_id=idx,
-                members=list(community),
-                level=1,
-            ))
+            detected.append(
+                DetectedCommunity(
+                    community_id=idx,
+                    members=list(community),
+                    level=1,
+                )
+            )
 
         return detected
 
@@ -75,11 +75,13 @@ class CommunityDetection:
 
         for community in communities:
             for entity_id in community.members:
-                db.add(EntityCommunity(
-                    entity_id=entity_id,
-                    community_id=community.community_id,
-                    community_level=community.level,
-                ))
+                db.add(
+                    EntityCommunity(
+                        entity_id=entity_id,
+                        community_id=community.community_id,
+                        community_level=community.level,
+                    )
+                )
 
         await db.commit()
 
@@ -97,9 +99,7 @@ class CommunityDetection:
         db: AsyncSession,
     ) -> dict[str, Any]:
         """Get statistics about communities."""
-        result = await db.execute(
-            select(EntityCommunity.community_id, EntityCommunity.entity_id)
-        )
+        result = await db.execute(select(EntityCommunity.community_id, EntityCommunity.entity_id))
         memberships = result.all()
 
         if not memberships:
@@ -120,7 +120,7 @@ class CommunityDetection:
 
         return {
             "total_communities": len(community_sizes),
-            "total_entities": len(set(m.entity_id for m in memberships)),
+            "total_entities": len({m.entity_id for m in memberships}),
             "avg_community_size": sum(sizes) / len(sizes),
             "largest_community": max(sizes),
             "smallest_community": min(sizes),

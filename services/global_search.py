@@ -38,9 +38,7 @@ class GlobalSearch:
         max_communities: int = 3,
         segments_per_community: int = 5,
     ) -> list[GlobalSearchResult]:
-        result = await db.execute(
-            select(CommunitySummary).order_by(CommunitySummary.community_id)
-        )
+        result = await db.execute(select(CommunitySummary).order_by(CommunitySummary.community_id))
         summaries = result.scalars().all()
 
         if not summaries:
@@ -58,14 +56,16 @@ class GlobalSearch:
                 db, community_id, segments_per_community
             )
 
-            results.append(GlobalSearchResult(
-                community_id=community_id,
-                community_summary=community_data["summary"],
-                primary_focus=community_data.get("primary_focus", ""),
-                relevance_score=community_data["relevance_score"],
-                member_entities=member_entities,
-                representative_segments=segments,
-            ))
+            results.append(
+                GlobalSearchResult(
+                    community_id=community_id,
+                    community_summary=community_data["summary"],
+                    primary_focus=community_data.get("primary_focus", ""),
+                    relevance_score=community_data["relevance_score"],
+                    member_entities=member_entities,
+                    representative_segments=segments,
+                )
+            )
 
         return results
 
@@ -84,7 +84,7 @@ class GlobalSearch:
         import math
 
         def cosine_similarity(a: list[float], b: list[float]) -> float:
-            dot_product = sum(x * y for x, y in zip(a, b))
+            dot_product = sum(x * y for x, y in zip(a, b, strict=False))
             norm_a = math.sqrt(sum(x * x for x in a))
             norm_b = math.sqrt(sum(x * x for x in b))
             if norm_a == 0 or norm_b == 0:
@@ -92,15 +92,17 @@ class GlobalSearch:
             return dot_product / (norm_a * norm_b)
 
         scored = []
-        for summary, embedding in zip(summaries, summary_embeddings):
+        for summary, embedding in zip(summaries, summary_embeddings, strict=False):
             similarity = cosine_similarity(query_embedding, embedding)
-            scored.append({
-                "community_id": summary.community_id,
-                "summary": summary.summary,
-                "primary_focus": summary.key_entities[0] if summary.key_entities else "",
-                "relevance_score": similarity,
-                "member_count": summary.member_count,
-            })
+            scored.append(
+                {
+                    "community_id": summary.community_id,
+                    "summary": summary.summary,
+                    "primary_focus": summary.key_entities[0] if summary.key_entities else "",
+                    "relevance_score": similarity,
+                    "member_count": summary.member_count,
+                }
+            )
 
         scored.sort(key=lambda x: x["relevance_score"], reverse=True)
         return scored
@@ -137,8 +139,7 @@ class GlobalSearch:
         limit: int = 5,
     ) -> list[dict]:
         result = await db.execute(
-            select(EntityCommunity.entity_id)
-            .where(EntityCommunity.community_id == community_id)
+            select(EntityCommunity.entity_id).where(EntityCommunity.community_id == community_id)
         )
         entity_ids = [row[0] for row in result.all()]
 
