@@ -48,7 +48,7 @@ class OrderPaperIngestor:
         Args:
             db_session_maker: Session maker
             pdf_path: Path to PDF file
-            video_id: Associated YouTube video ID (optional)
+            video_id: Associated YouTube video ID (optional, no longer used)
             chamber: Chamber ('house' or 'senate')
 
         Returns:
@@ -76,14 +76,8 @@ class OrderPaperIngestor:
                     f"Parsed {len(parsed.speakers)} speakers, {len(parsed.agenda_items)} agenda items"
                 )
 
-                # Get or create video record
-                video_uuid = None
-                if video_id:
-                    video_uuid = await self._get_or_create_video(db, video_id, parsed, chamber)
-
                 # Save to database
                 order_paper = OrderPaperModel(
-                    video_id=video_uuid,
                     pdf_path=str(pdf_path),
                     pdf_hash=pdf_hash,
                     session_title=parsed.session_title,
@@ -120,43 +114,12 @@ class OrderPaperIngestor:
                 return {
                     "status": "success",
                     "order_paper_id": str(order_paper.id),
-                    "video_id": str(video_uuid) if video_uuid else None,
                 }
 
             except Exception as e:
                 logger.error(f"Failed to ingest {pdf_path}: {e}")
                 await db.rollback()
                 return {"status": "error", "error": str(e)}
-
-    async def _get_or_create_video(
-        self,
-        db: AsyncSession,
-        youtube_id: str,
-        parsed: ParsedOrderPaper,
-        chamber: str,
-    ):
-        """Get or create video record"""
-        result = await db.execute(select(Video).where(Video.youtube_id == youtube_id))
-        video = result.scalar_one_or_none()
-
-        if video:
-            return video.id
-
-        # Create new video record
-        video = Video(
-            youtube_id=youtube_id,
-            youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
-            title=parsed.session_title,
-            chamber=chamber,
-            session_date=datetime.combine(parsed.session_date, datetime.min.time()),
-            transcript={},
-        )
-
-        db.add(video)
-        await db.commit()
-        await db.refresh(video)
-
-        return video.id
 
     async def _sync_speakers(self, db: AsyncSession, speakers: list):
         """Create or update speaker records"""
