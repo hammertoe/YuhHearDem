@@ -182,7 +182,7 @@ deploy() {
 
     # Run DB migrations
     log_info "Running database migrations..."
-    ./deploy/migrate.sh
+    ./deploy/migrate.sh "$version"
 
     # Authenticate with GHCR
     log_info "Authenticating with GitHub Container Registry..."

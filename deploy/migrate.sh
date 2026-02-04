@@ -1,6 +1,6 @@
 #!/bin/bash
 # Database migration script for YuhHearDem
-# Run migrations inside the postgres container
+# Run migrations with the app image
 
 set -euo pipefail
 
@@ -19,9 +19,14 @@ if ! docker ps --format '{{.Names}}' | grep -q "yhd-postgres"; then
     exit 1
 fi
 
-# Run alembic upgrade head
-docker compose --env-file .env -f deploy/docker-compose.postgres.yml \
-    exec -T postgres bash -c \
-    "cd /app && alembic upgrade head"
+# Run alembic upgrade head using the app image
+version="${1:-latest}"
+image_prefix="${IMAGE_PREFIX:-ghcr.io/hammertoe/yuhheardem}"
+
+docker run --rm \
+    --env-file .env \
+    --network yhd-shared \
+    "${image_prefix}:${version}" \
+    alembic upgrade head
 
 log_info "Migrations completed successfully!"
