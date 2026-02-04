@@ -1,7 +1,7 @@
 """Tests for daily pipeline YouTube monitoring."""
 
-from datetime import datetime
 import types
+from datetime import datetime
 
 import pytest
 from sqlalchemy import select

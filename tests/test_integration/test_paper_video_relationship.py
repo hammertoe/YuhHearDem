@@ -1,15 +1,14 @@
 """Tests for 1:N paper-video relationship (multi-part sessions)."""
 
-import pytest
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
 
-from core.database import get_session_maker
-from models.video import Video
 from models.order_paper import OrderPaper
-from services.video_paper_matcher import VideoPaperMatcher, TitlePatternMatcher
+from models.video import Video
+from services.video_paper_matcher import TitlePatternMatcher, VideoPaperMatcher
 
 
 @pytest.mark.asyncio
@@ -198,7 +197,7 @@ async def test_can_link_multiple_videos_to_existing_paper(db_session):
     videos = result.scalars().all()
 
     assert len(videos) == 2
-    assert set([v.youtube_id for v in videos]) == {"video1", "video2"}
+    assert {v.youtube_id for v in videos} == {"video1", "video2"}
 
 
 @pytest.mark.asyncio
