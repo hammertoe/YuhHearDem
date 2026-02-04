@@ -10,10 +10,13 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.database import Base
 from app.config import get_settings
+
+# Import all models to register them with Base.metadata
+import models  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config
@@ -55,9 +58,7 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection, target_metadata=target_metadata, compare_type=True
-    )
+    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
 
     with context.begin_transaction():
         context.run_migrations()
