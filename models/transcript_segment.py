@@ -4,9 +4,9 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import JSON, TEXT, DateTime, ForeignKey, Integer, String
-from sqlalchemy.types import TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 from core.database import Base
 
