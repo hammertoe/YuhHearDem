@@ -27,10 +27,9 @@ Usage:
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -41,17 +40,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from sqlalchemy import select, and_, or_, not_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from core.database import get_session_maker
-from app.dependencies import get_db_session
-from models.video import Video
 from models.order_paper import OrderPaper
-from services.video_paper_matcher import VideoPaperMatcher, TitlePatternMatcher
-from services.gemini import GeminiClient
-from parsers.video_transcript import VideoTranscriptionParser
+from models.video import Video
 from parsers.models import OrderPaper as ParsedOrderPaper
+from parsers.video_transcript import VideoTranscriptionParser
+from services.gemini import GeminiClient
+from services.video_paper_matcher import TitlePatternMatcher, VideoPaperMatcher
+
+Path("logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
