@@ -1,13 +1,15 @@
 """Knowledge graph storage layer"""
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.entity import Entity
 from models.mention import Mention
 from models.relationship import Relationship
+from models.transcript_segment import TranscriptSegment
 from models.video import Video
+from services.embeddings import EmbeddingService
 
 
 class KnowledgeGraphStore:
@@ -109,8 +111,6 @@ class KnowledgeGraphStore:
             query = query.join(Video, Mention.video_id == Video.id).where(
                 Video.youtube_id == video_id
             )
-        else:
-            query = query.options(selectinload("video"))
 
         query = query.order_by(Mention.timestamp_seconds).limit(limit)
 
@@ -261,87 +261,174 @@ class KnowledgeGraphStore:
         self,
         db: AsyncSession,
         query_text: str,
+        embedding_service: EmbeddingService,
         limit: int = 10,
     ) -> list[dict]:
         """
-        Semantic search over transcript sentences.
+        Semantic search over transcript segments using vector similarity.
+
+        Uses pgvector's cosine distance operator (<=>) for proper vector similarity search.
 
         Args:
             db: Database session
             query_text: Search query text
+            embedding_service: Service to generate query embeddings
             limit: Maximum results
 
         Returns:
-            List of matching sentence data
+            List of matching segments with relevance scores
         """
+        # Generate embedding for query text
+        query_embeddings = embedding_service.generate_embeddings([query_text])
+        if not query_embeddings or not query_embeddings[0]:
+            return []
 
-        from models.vector_embedding import VectorEmbedding
+        query_vector = query_embeddings[0]
 
-        query = select(VectorEmbedding)
+        # Use pgvector cosine distance operator (<=>)
+        # The <=> operator returns cosine distance (1 - cosine similarity)
+        # Lower distance = higher similarity
+        # We use 1 - distance to get similarity score (0-1 range)
 
-        query = query.order_by(VectorEmbedding.embedding)
-        query = query.limit(limit)
+        # Convert Python list to PostgreSQL array format
+        vector_str = "[" + ",".join(str(x) for x in query_vector) + "]"
 
-        result = await db.execute(query)
-        embeddings = result.scalars().all()
+        # Build query with pgvector cosine distance
+        # embedding <=> query_vector gives cosine distance
+        # 1 - (embedding <=> query_vector) gives cosine similarity
+        stmt = text(f"""
+            SELECT 
+                id,
+                video_id,
+                segment_id,
+                text,
+                speaker_id,
+                start_time_seconds,
+                end_time_seconds,
+                1 - (embedding <=> '{vector_str}'::vector) as similarity
+            FROM transcript_segments
+            ORDER BY embedding <=> '{vector_str}'::vector
+            LIMIT {limit}
+        """)
 
-        if embeddings:
-            return [
+        result = await db.execute(stmt)
+        rows = result.fetchall()
+
+        if not rows:
+            return []
+
+        # Fetch video titles in batch
+        video_ids = [row.video_id for row in rows]
+        video_result = await db.execute(select(Video).where(Video.id.in_(video_ids)))
+        video_map = {v.id: v for v in video_result.scalars().all()}
+
+        return [
+            {
+                "segment_id": row.segment_id,
+                "text": row.text,
+                "video_id": str(row.video_id),
+                "video_title": video_map.get(row.video_id, Video()).title
+                if row.video_id in video_map
+                else "Unknown",
+                "speaker_id": row.speaker_id,
+                "timestamp_seconds": row.start_time_seconds,
+                "relevance": float(row.similarity),
+            }
+            for row in rows
+        ]
+
+    async def search_semantic_with_entities(
+        self,
+        db: AsyncSession,
+        query_text: str,
+        embedding_service: EmbeddingService,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Semantic search that also returns entities mentioned in each segment.
+
+        This bridges the gap between vector search and knowledge graph,
+        enabling GraphRAG workflows where we can traverse from text to entities.
+
+        Args:
+            db: Database session
+            query_text: Search query text
+            embedding_service: Service to generate query embeddings
+            limit: Maximum results
+
+        Returns:
+            List of segments with entities mentioned in each
+        """
+        # Get semantically similar segments
+        segments = await self.search_semantic(db, query_text, embedding_service, limit)
+
+        if not segments:
+            return []
+
+        # Get segment IDs
+        segment_ids = [s["segment_id"] for s in segments]
+
+        # Fetch all entities mentioned in these segments
+        mentions_result = await db.execute(
+            select(Mention, Entity)
+            .join(Entity, Mention.entity_id == Entity.entity_id)
+            .where(Mention.segment_id.in_(segment_ids))
+        )
+        mentions = mentions_result.all()
+
+        # Group entities by segment
+        segment_entities: dict[str, list[dict]] = {}
+        for mention, entity in mentions:
+            seg_id = mention.segment_id
+            if seg_id not in segment_entities:
+                segment_entities[seg_id] = []
+            segment_entities[seg_id].append(
                 {
-                    "text": emb.text,
-                    "video_id": str(emb.video_id),
-                    "video_title": emb.video.title,
-                    "speaker_id": emb.speaker_id,
-                    "timestamp_seconds": emb.timestamp_seconds,
-                    "relevance": 0.95,
+                    "entity_id": entity.entity_id,
+                    "name": entity.name,
+                    "entity_type": entity.entity_type,
+                    "importance_score": entity.importance_score,
                 }
-                for emb in embeddings
-            ]
+            )
 
-        # Fallback: if no embeddings, search videos and return transcript segments
-        query = select(Video).order_by(Video.session_date.desc()).limit(limit)
-        result = await db.execute(query)
-        videos = result.scalars().all()
+        # Add entities to each segment
+        for segment in segments:
+            seg_id = segment["segment_id"]
+            segment["entities"] = segment_entities.get(seg_id, [])
+            segment["entity_count"] = len(segment["entities"])
 
-        results: list[dict] = []
-        for video in videos:
-            transcript = video.transcript or {}
+        return segments
 
-            # First add topic titles as results
-            for item in transcript.get("agenda_items", []):
-                topic_title = item.get("topic_title", "")
-                if topic_title and len(results) < limit:
-                    results.append(
-                        {
-                            "text": f"Topic: {topic_title}",
-                            "video_id": str(video.id),
-                            "video_title": video.title,
-                            "timestamp_seconds": 0,
-                            "relevance": 0.9,
-                        }
-                    )
+    async def get_entities_in_segment(
+        self,
+        db: AsyncSession,
+        segment_id: str,
+    ) -> list[dict]:
+        """
+        Get all entities mentioned in a transcript segment.
 
-            # Then add sentences
-            if len(results) < limit:
-                for item in transcript.get("agenda_items", []):
-                    for block in item.get("speech_blocks", []):
-                        for sentence in block.get("sentences", []):
-                            text = sentence.get("text", "")
-                            if text and len(results) < limit:
-                                results.append(
-                                    {
-                                        "text": text,
-                                        "video_id": str(video.id),
-                                        "video_title": video.title,
-                                        "timestamp_seconds": sentence.get("timestamp_seconds", 0),
-                                        "relevance": 0.5,
-                                    }
-                                )
-                            if len(results) >= limit:
-                                break
-                        if len(results) >= limit:
-                            break
-                    if len(results) >= limit:
-                        break
+        This creates the critical bridge from text (segments) to knowledge graph (entities),
+        enabling GraphRAG traversal.
 
-        return results
+        Args:
+            db: Database session
+            segment_id: Transcript segment ID
+
+        Returns:
+            List of entities mentioned in the segment
+        """
+        result = await db.execute(
+            select(Entity, Mention)
+            .join(Mention, Entity.entity_id == Mention.entity_id)
+            .where(Mention.segment_id == segment_id)
+            .order_by(Mention.timestamp_seconds)
+        )
+
+        entities = []
+        for entity, mention in result.all():
+            entity_dict = entity.to_dict()
+            entity_dict["mention_context"] = mention.context
+            entity_dict["timestamp_seconds"] = mention.timestamp_seconds
+            entities.append(entity_dict)
+
+        return entities

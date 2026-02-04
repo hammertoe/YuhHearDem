@@ -342,6 +342,65 @@ class GeminiClient:
 
         raise RuntimeError("Failed to extract entities with Gemini")
 
+    def generate_structured(
+        self,
+        prompt: str,
+        response_schema: dict,
+        stage: str = "structured_generation",
+    ) -> dict[str, Any]:
+        """
+        Generate structured output from a prompt using JSON schema.
+
+        Args:
+            prompt: Instruction prompt
+            response_schema: JSON schema defining the expected output structure
+            stage: Stage name for usage tracking
+
+        Returns:
+            Parsed JSON response matching the schema
+        """
+        # Prepare generation config
+        config_kwargs: dict[str, Any] = {
+            "temperature": self.temperature,
+            "max_output_tokens": self.max_output_tokens,
+            "response_mime_type": "application/json",
+            "response_schema": response_schema,
+        }
+
+        # Add thinking config if thinking_budget is specified
+        if self.thinking_budget is not None:
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=self.thinking_budget,
+                include_thoughts=False,
+            )
+
+        generation_config = types.GenerateContentConfig(**config_kwargs)
+
+        # Retry logic for transient failures
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                # Generate content
+                start_time_perf = time.perf_counter()
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=generation_config,
+                )
+                duration_ms = (time.perf_counter() - start_time_perf) * 1000
+                self._record_usage(response, stage=stage, duration_ms=duration_ms)
+
+                # Parse response
+                return self._safe_json_parse(response.text or "", context="structured generation")
+
+            except json.JSONDecodeError:
+                if attempt < self.MAX_RETRIES:
+                    delay = self.RETRY_DELAY_BASE * attempt
+                    time.sleep(delay)
+                else:
+                    raise
+
+        raise RuntimeError("Failed to generate structured output with Gemini")
+
     def embed_texts(
         self,
         texts: list[str],

@@ -4,19 +4,26 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.embeddings import EmbeddingService
 from storage.knowledge_graph_store import KnowledgeGraphStore
 
 
 class ParliamentaryAgentTools:
     """Tool functions that the parliamentary agent can use."""
 
-    def __init__(self, knowledge_store: KnowledgeGraphStore):
+    def __init__(
+        self,
+        knowledge_store: KnowledgeGraphStore,
+        embedding_service: EmbeddingService | None = None,
+    ):
         """Initialize tools with knowledge graph store.
 
         Args:
             knowledge_store: Knowledge graph storage layer
+            embedding_service: Optional embedding service for semantic search
         """
         self.kg_store = knowledge_store
+        self.embedding_service = embedding_service
 
     async def find_entity(
         self,
@@ -92,6 +99,12 @@ class ParliamentaryAgentTools:
         Returns:
             Tool response for Gemini
         """
+        if not entity_id:
+            return {
+                "status": "error",
+                "error": "Entity ID is required.",
+            }
+
         mentions = await self.kg_store.get_mentions(db, entity_id, video_id, limit)
 
         return {
@@ -207,7 +220,13 @@ class ParliamentaryAgentTools:
         Returns:
             Tool response for Gemini
         """
-        results = await self.kg_store.search_semantic(db, query_text, limit)
+        if not self.embedding_service:
+            return {
+                "status": "error",
+                "error": "Semantic search requires embedding service but none was provided.",
+            }
+
+        results = await self.kg_store.search_semantic(db, query_text, self.embedding_service, limit)
 
         return {
             "status": "success",
