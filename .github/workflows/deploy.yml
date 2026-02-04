@@ -62,7 +62,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ vars.YHD_HOST }}
-          username: ${{ vars.YHD_USER }}
+          username: ${{ vars.YHD_USER || 'github' }}
           key: ${{ secrets.YHD_SSH_KEY }}
           port: ${{ vars.YHD_PORT || 22 }}
           script: |
@@ -78,7 +78,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ vars.YHD_HOST }}
-          username: ${{ vars.YHD_USER }}
+          username: ${{ vars.YHD_USER || 'github' }}
           key: ${{ secrets.YHD_SSH_KEY }}
           port: ${{ vars.YHD_PORT || 22 }}
           script: |
