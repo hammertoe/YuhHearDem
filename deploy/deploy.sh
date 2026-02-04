@@ -86,7 +86,12 @@ health_check() {
 
     log_error "Health check failed after $max_retries attempts"
     log_error "Container logs for $container_name:"
-    docker logs "$container_name" --tail 100 2>&1 || true
+    log_info "Fetching logs from docker..."
+    docker logs "$container_name" --tail 100 2>&1 > /tmp/container_logs.txt 2>&1 || true
+    log_info "Log file size: $(wc -l < /tmp/container_logs.txt) lines"
+    log_info "--- Container Logs Start ---"
+    cat /tmp/container_logs.txt
+    log_info "--- Container Logs End ---"
     return 1
 }
 
