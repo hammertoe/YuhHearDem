@@ -19,6 +19,9 @@ if ! docker ps --format '{{.Names}}' | grep -q "yhd-postgres"; then
     exit 1
 fi
 
+# Ensure pgvector extension exists
+docker exec -i yhd-postgres psql -U yuhheardem -d yuhheardem -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
 # Run alembic upgrade head using the app image
 version="${1:-latest}"
 image_prefix="${IMAGE_PREFIX:-ghcr.io/hammertoe/yuhheardem}"
