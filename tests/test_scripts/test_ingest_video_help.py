@@ -14,3 +14,7 @@ def test_ingest_video_help_runs():
     )
 
     assert result.returncode == 0
+    assert "--fps" in result.stdout
+    assert "--start-time" in result.stdout
+    assert "--end-time" in result.stdout
+    assert "--no-thinking" in result.stdout

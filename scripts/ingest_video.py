@@ -64,6 +64,9 @@ class VideoIngestor:
         session_date: datetime | None = None,
         sitting_number: str | None = None,
         order_paper: ParsedOrderPaper | None = None,
+        fps: float | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> dict:
         """
         Transcribe and save a video.
@@ -101,10 +104,14 @@ class VideoIngestor:
             transcript: SessionTranscript
             transcribe_start = time.perf_counter()
             if order_paper:
+                effective_fps = fps if fps is not None else 0.25
                 transcript = self.transcription_service.transcribe(
                     video_url=youtube_url,
                     order_paper=order_paper,
                     speaker_id_mapping=speaker_id_mapping,
+                    fps=effective_fps,
+                    start_time=start_time,
+                    end_time=end_time,
                 )
             else:
                 # Transcribe without order paper context
@@ -127,7 +134,9 @@ class VideoIngestor:
                     video_url=youtube_url,
                     prompt=prompt,
                     response_schema=VideoTranscriptionService.TRANSCRIPT_SCHEMA,
-                    fps=0.25,
+                    fps=fps if fps is not None else 0.25,
+                    start_time=start_time,
+                    end_time=end_time,
                 )
 
                 transcript = self._parse_simple_response(response)
@@ -222,12 +231,18 @@ class VideoIngestor:
     async def ingest_from_file(
         self,
         mapping_file: Path,
+        fps: float | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> list[dict]:
         """
         Ingest videos from a JSON mapping file.
 
         Args:
             mapping_file: JSON file with video metadata
+            fps: Optional FPS override
+            start_time: Optional start time in seconds
+            end_time: Optional end time in seconds
 
         Expected format:
         [
@@ -266,6 +281,9 @@ class VideoIngestor:
                 else None,
                 sitting_number=video_data.get("sitting_number"),
                 order_paper=order_paper,
+                fps=video_data.get("fps", fps),
+                start_time=video_data.get("start_time", start_time),
+                end_time=video_data.get("end_time", end_time),
             )
             results.append(result)
 
@@ -791,6 +809,26 @@ async def main():
         help="Sitting number",
     )
     parser.add_argument(
+        "--fps",
+        type=float,
+        help="Frames per second for video sampling",
+    )
+    parser.add_argument(
+        "--start-time",
+        type=int,
+        help="Start time in seconds",
+    )
+    parser.add_argument(
+        "--end-time",
+        type=int,
+        help="End time in seconds",
+    )
+    parser.add_argument(
+        "--no-thinking",
+        action="store_true",
+        help="Disable thinking budget for Gemini",
+    )
+    parser.add_argument(
         "--order-paper",
         type=Path,
         help="Path to order paper PDF for context",
@@ -800,21 +838,31 @@ async def main():
 
     settings = get_settings()
 
+    thinking_budget = 0 if args.no_thinking else None
     client = GeminiClient(
         api_key=settings.google_api_key,
         model=settings.gemini_model,
         temperature=settings.gemini_temperature,
+        thinking_budget=thinking_budget,
     )
 
     async with _db_session() as db:
         ingestor = VideoIngestor(
             db,
             client,
-            entity_extractor=EntityExtractor(api_key=settings.google_api_key),
+            entity_extractor=EntityExtractor(
+                api_key=settings.google_api_key,
+                thinking_budget=thinking_budget,
+            ),
         )
 
         if args.mapping:
-            results = await ingestor.ingest_from_file(args.mapping)
+            results = await ingestor.ingest_from_file(
+                args.mapping,
+                fps=args.fps,
+                start_time=args.start_time,
+                end_time=args.end_time,
+            )
 
             success = sum(1 for r in results if r["status"] == "success")
             skipped = sum(1 for r in results if r["status"] == "skipped")
@@ -843,6 +891,9 @@ async def main():
                 else None,
                 sitting_number=args.sitting_number,
                 order_paper=order_paper,
+                fps=args.fps,
+                start_time=args.start_time,
+                end_time=args.end_time,
             )
             print(result)
         else:

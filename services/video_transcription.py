@@ -73,6 +73,8 @@ class VideoTranscriptionService:
         order_paper: OrderPaper,
         speaker_id_mapping: dict[str, str],
         fps: float = 0.25,
+        start_time: int | None = None,
+        end_time: int | None = None,
     ) -> SessionTranscript:
         """
         Transcribe a video with order paper context.
@@ -93,6 +95,8 @@ class VideoTranscriptionService:
             prompt=prompt,
             response_schema=self.TRANSCRIPT_SCHEMA,
             fps=fps,
+            start_time=start_time,
+            end_time=end_time,
         )
 
         return self._parse_response(response)

@@ -87,6 +87,41 @@ class TestVideoTranscriptionService:
 
         assert kwargs["response_schema"] == service.TRANSCRIPT_SCHEMA
 
+    def test_transcribe_passes_timing_and_fps(self):
+        """Transcribe should pass fps and timing offsets to Gemini."""
+        mock_client = Mock()
+        mock_client.analyze_video_with_transcript = Mock(
+            return_value={
+                "session_title": "Test Session",
+                "date": "2024-01-01",
+                "chamber": "house",
+                "agenda_items": [],
+            }
+        )
+        service = VideoTranscriptionService(mock_client)
+
+        order_paper = OrderPaper(
+            session_title="Test Session",
+            session_date=date(2024, 1, 1),
+            speakers=[],
+            agenda_items=[],
+        )
+
+        service.transcribe(
+            video_url="https://example.com",
+            order_paper=order_paper,
+            speaker_id_mapping={},
+            fps=0.1,
+            start_time=60,
+            end_time=600,
+        )
+
+        _, kwargs = mock_client.analyze_video_with_transcript.call_args
+
+        assert kwargs["fps"] == 0.1
+        assert kwargs["start_time"] == 60
+        assert kwargs["end_time"] == 600
+
     def test_parse_response_builds_transcript_objects(self):
         """Agenda items and speech blocks should be dataclasses."""
         mock_client = Mock()
