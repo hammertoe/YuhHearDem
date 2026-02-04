@@ -66,9 +66,15 @@ jobs:
           key: ${{ secrets.YHD_SSH_KEY }}
           port: ${{ vars.YHD_PORT || 22 }}
           script: |
-            cd /opt/yuhheardem
-            git pull origin main
-            echo "Deploy scripts synced from git"
+            set -e
+            echo "=== Syncing deploy scripts from git ==="
+            cd /opt/yuhheardem || { echo "Failed to cd to /opt/yuhheardem"; exit 1; }
+            echo "Current directory: $(pwd)"
+            echo "Current git commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'no-git')"
+            git fetch origin main || { echo "Git fetch failed"; exit 1; }
+            git reset --hard origin/main || { echo "Git reset failed"; exit 1; }
+            echo "Synced deploy.sh version: $(git rev-parse --short HEAD)"
+            echo "=== Deploy scripts sync complete ==="
 
       - name: Deploy to yhd server
         uses: appleboy/ssh-action@v1.0.3
