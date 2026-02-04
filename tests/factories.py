@@ -1,6 +1,6 @@
 """Factory for creating test models"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import factory
@@ -23,7 +23,7 @@ class VideoFactory(factory.Factory):
     youtube_url = factory.LazyAttribute(lambda o: f"https://youtube.com/watch?v={o.youtube_id}")
     title = factory.Faker("sentence")
     chamber = factory.Iterator(["senate", "house"])
-    session_date = factory.LazyFunction(datetime.utcnow)
+    session_date = factory.LazyFunction(lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     sitting_number = factory.Faker("random_int", min=1, max=100)
     duration_seconds = factory.Faker("random_int", min=1800, max=10800)
     transcript = factory.LazyAttribute(

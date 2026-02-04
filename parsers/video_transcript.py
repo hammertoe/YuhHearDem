@@ -718,6 +718,8 @@ Return the complete transcript in the specified JSON structure."""
             for block in item.speech_blocks:
                 if block.sentences:
                     first_timestamp_seconds = self._parse_timecode(block.sentences[0].start_time)
+                    if first_timestamp_seconds is None:
+                        continue
 
                     # If first timestamp is close to 0, it's relative
                     if first_timestamp_seconds < 300:  # Within 5 minutes of start
@@ -763,6 +765,10 @@ Return the complete transcript in the specified JSON structure."""
 
                 for sentence in block.sentences:
                     timestamp_seconds = self._parse_timecode(sentence.start_time)
+
+                    if timestamp_seconds is None:
+                        filtered_count += 1
+                        continue
 
                     # Check if timestamp is within expected range (with tolerance)
                     if (

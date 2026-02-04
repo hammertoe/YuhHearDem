@@ -8,7 +8,7 @@ import logging
 import sys
 import time
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -165,10 +165,10 @@ class VideoIngestor:
                     youtube_url=youtube_url,
                     title=transcript.session_title or f"Session {youtube_id}",
                     chamber=chamber,
-                    session_date=session_date or datetime.utcnow(),
+                    session_date=session_date or datetime.now(timezone.utc).replace(tzinfo=None),
                     sitting_number=sitting_number,
                     transcript=transcript_data,
-                    transcript_processed_at=datetime.utcnow(),
+                    transcript_processed_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
                 self.db.add(video)
             else:
@@ -178,7 +178,7 @@ class VideoIngestor:
                 video.session_date = session_date or video.session_date
                 video.sitting_number = sitting_number
                 video.transcript = transcript_data
-                video.transcript_processed_at = datetime.utcnow()
+                video.transcript_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
             await self.db.flush()
 
@@ -738,16 +738,7 @@ class VideoIngestor:
 
     def _parse_simple_response(self, response: dict) -> SessionTranscript:
         """Parse Gemini response without order paper"""
-        from parsers.transcript_models import SessionTranscript
-
-        return SessionTranscript(
-            session_title=response.get("title", "Unknown Session"),
-            date=datetime.utcnow(),
-            chamber="house",
-            agenda_items=[],
-            video_url=response.get("video_url"),
-            video_title=response.get("video_title"),
-        )
+        return self.transcription_service._parse_response(response)
 
     def _serialize_transcript(self, transcript: Any) -> dict[str, Any]:
         """Serialize transcript payload into JSON-safe dict."""

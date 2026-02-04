@@ -1,6 +1,6 @@
 """Relationship model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import DateTime, Float, ForeignKey, String
@@ -26,7 +26,10 @@ class Relationship(Base):
     source_ref: Mapped[str | None] = mapped_column(String(200))
     video_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("videos.id"))
     timestamp_seconds: Mapped[int | None] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
 
     def to_dict(self) -> dict:
         return {

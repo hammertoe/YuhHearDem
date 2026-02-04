@@ -29,7 +29,7 @@ class VideoBase(BaseModel):
 class VideoCreate(VideoBase):
     """Video creation schema"""
 
-    transcript: dict
+    transcript: dict | None = None
 
 
 class VideoResponse(VideoBase):

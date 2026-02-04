@@ -1,5 +1,6 @@
 """Video management API endpoints"""
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -42,19 +43,22 @@ async def list_videos(
         query = query.where(Video.chamber == chamber)
 
     if date_from:
-        from datetime import datetime
-
-        dt = datetime.strptime(date_from, "%Y-%m-%d")
+        try:
+            dt = datetime.strptime(date_from, "%Y-%m-%d")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid date_from format") from exc
         query = query.where(Video.session_date >= dt)
 
     if date_to:
-        from datetime import datetime
-
-        dt = datetime.strptime(date_to, "%Y-%m-%d")
+        try:
+            dt = datetime.strptime(date_to, "%Y-%m-%d")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid date_to format") from exc
         query = query.where(Video.session_date <= dt)
 
     order_by = Video.session_date.desc()
     query = query.order_by(order_by)
+    query = query.limit(per_page).offset((page - 1) * per_page)
 
     result = await db.execute(query)
     videos = result.scalars().all()

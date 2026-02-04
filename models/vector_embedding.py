@@ -1,6 +1,6 @@
 """Vector embedding model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, TEXT, DateTime, ForeignKey, Integer, String
@@ -38,4 +38,7 @@ class VectorEmbedding(Base):
     speaker_id: Mapped[str | None] = mapped_column(String(100), ForeignKey("speakers.canonical_id"))
     timestamp_seconds: Mapped[int | None] = mapped_column(Integer)
     meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )

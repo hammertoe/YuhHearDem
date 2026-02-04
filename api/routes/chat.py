@@ -1,6 +1,6 @@
 """Chat and query API endpoints"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -77,7 +77,7 @@ async def process_query(
     db.add(user_message)
     await db.commit()
 
-    session.last_updated = datetime.utcnow()
+    session.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
 
     agent_response = await agent.query(db=db, user_query=query)
@@ -195,7 +195,7 @@ async def process_query_stream(
     db.add(user_message)
     await db.commit()
 
-    session.last_updated = datetime.utcnow()
+    session.last_updated = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
 
     async def event_generator():

@@ -1,6 +1,6 @@
 """Legislation model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, TEXT, DateTime, String
@@ -28,7 +28,12 @@ class Legislation(Base):
     pdf_url: Mapped[str | None] = mapped_column(String)
     description: Mapped[str | None] = mapped_column(TEXT)
     stages: Mapped[list] = mapped_column(JSON, default=lambda: [])
-    scraped_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )

@@ -1,6 +1,6 @@
 """Mention model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import TEXT, DateTime, ForeignKey, Integer, String
@@ -38,7 +38,10 @@ class Mention(Base):
     speaker_canonical_id: Mapped[str | None] = mapped_column(String(100), index=True)
     agenda_title: Mapped[str | None] = mapped_column(TEXT)
     segment_id: Mapped[str | None] = mapped_column(String(80), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
 
     def to_dict(self) -> dict:
         return {

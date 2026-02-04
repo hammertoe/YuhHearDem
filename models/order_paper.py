@@ -1,6 +1,6 @@
 """Order paper model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, Date, DateTime, String
@@ -24,4 +24,7 @@ class OrderPaper(Base):
     chamber: Mapped[str | None] = mapped_column(String(50))
     speakers: Mapped[list] = mapped_column(JSON, nullable=False)
     agenda_items: Mapped[list] = mapped_column(JSON, nullable=False)
-    parsed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    parsed_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )

@@ -1,6 +1,6 @@
 """Video transcription service using Gemini"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import cast
 
 from parsers.models import OrderPaper
@@ -142,12 +142,12 @@ TRANSCRIPTION INSTRUCTIONS:
         """Parse Gemini response into SessionTranscript."""
         # Simplified parsing - in production would handle all cases
         date_value = response.get("date")
-        parsed_date: datetime = datetime.utcnow()
+        parsed_date: datetime = datetime.now(timezone.utc).replace(tzinfo=None)
         if isinstance(date_value, str):
             try:
                 parsed_date = datetime.fromisoformat(date_value)
             except ValueError:
-                parsed_date = datetime.utcnow()
+                parsed_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         session_title = response.get("session_title")
         if not isinstance(session_title, str):

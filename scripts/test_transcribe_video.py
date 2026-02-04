@@ -3,6 +3,7 @@
 
 import asyncio
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -29,14 +30,12 @@ async def main():
             video = existing.scalar_one()
         else:
             # Create new video record
-            from datetime import datetime
-
             video = Video(
                 youtube_id="P6cUJb9xqIs",
                 youtube_url=TEST_VIDEO_URL,
                 title="Test Video for Transcription",
                 chamber="house",
-                session_date=datetime.utcnow(),  # Required field
+                session_date=datetime.now(timezone.utc).replace(tzinfo=None),
                 sitting_number=None,
                 transcript={},  # Empty transcript initially
             )

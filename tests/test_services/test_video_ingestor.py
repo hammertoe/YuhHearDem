@@ -1,6 +1,6 @@
 """Video ingestion tests."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import Mock
 
@@ -68,7 +68,7 @@ async def test_ingest_video_updates_existing_without_transcript(db_session):
         youtube_url="https://www.youtube.com/watch?v=abc123",
         title="Placeholder",
         chamber="house",
-        session_date=datetime.utcnow(),
+        session_date=datetime.now(timezone.utc).replace(tzinfo=None),
         transcript={},
     )
     db_session.add(video)
@@ -76,13 +76,13 @@ async def test_ingest_video_updates_existing_without_transcript(db_session):
 
     order_paper = OrderPaper(
         session_title="Test Session",
-        session_date=datetime.utcnow().date(),
+        session_date=datetime.now(timezone.utc).date(),
         speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
         agenda_items=[AgendaItem(topic_title="Intro")],
     )
     transcript = SessionTranscript(
         session_title="Test Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[],
     )
@@ -106,7 +106,7 @@ async def test_ingest_video_saves_transcript_dict(db_session):
         youtube_url="https://www.youtube.com/watch?v=def456",
         title="Placeholder",
         chamber="house",
-        session_date=datetime.utcnow(),
+        session_date=datetime.now(timezone.utc).replace(tzinfo=None),
         transcript={},
     )
     db_session.add(video)
@@ -114,13 +114,13 @@ async def test_ingest_video_saves_transcript_dict(db_session):
 
     order_paper = OrderPaper(
         session_title="Stored Session",
-        session_date=datetime.utcnow().date(),
+        session_date=datetime.now(timezone.utc).date(),
         speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
         agenda_items=[AgendaItem(topic_title="Intro")],
     )
     transcript = SessionTranscript(
         session_title="Stored Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[],
     )
@@ -167,13 +167,13 @@ async def test_ingest_video_persists_speaker_entities(db_session):
     """Speaker entities should be stored in the knowledge graph."""
     order_paper = OrderPaper(
         session_title="Speaker Session",
-        session_date=datetime.utcnow().date(),
+        session_date=datetime.now(timezone.utc).date(),
         speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
         agenda_items=[AgendaItem(topic_title="Intro")],
     )
     transcript = SessionTranscript(
         session_title="Speaker Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[],
     )
@@ -226,13 +226,13 @@ async def test_ingest_video_creates_mentions_and_agenda_edges(db_session):
 
     order_paper = OrderPaper(
         session_title="KG Session",
-        session_date=datetime.utcnow().date(),
+        session_date=datetime.now(timezone.utc).date(),
         speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
         agenda_items=[AgendaItem(topic_title="Road Traffic Bill")],
     )
     transcript = SessionTranscript(
         session_title="KG Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[
             TranscriptAgendaItem(
@@ -310,13 +310,13 @@ async def test_ingest_video_persists_transcript_segments(db_session):
     """Transcript segments should be stored with embeddings."""
     order_paper = OrderPaper(
         session_title="Segment Session",
-        session_date=datetime.utcnow().date(),
+        session_date=datetime.now(timezone.utc).date(),
         speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
         agenda_items=[AgendaItem(topic_title="Segment Topic")],
     )
     transcript = SessionTranscript(
         session_title="Segment Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[
             TranscriptAgendaItem(

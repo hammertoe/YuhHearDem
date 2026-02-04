@@ -1,6 +1,6 @@
 """Entity extraction speaker handling tests."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from parsers.transcript_models import Sentence, SessionTranscript, SpeechBlock, TranscriptAgendaItem
 from services import entity_extractor as entity_extractor_module
@@ -46,7 +46,7 @@ def test_extract_from_transcript_adds_speaker_entities(monkeypatch):
 
     transcript = SessionTranscript(
         session_title="Test Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[
             TranscriptAgendaItem(
@@ -120,7 +120,7 @@ def test_extract_from_transcript_handles_mentions(monkeypatch):
 
     transcript = SessionTranscript(
         session_title="Test Session",
-        date=datetime.utcnow(),
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[
             TranscriptAgendaItem(

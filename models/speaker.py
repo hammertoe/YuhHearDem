@@ -1,6 +1,6 @@
 """Speaker model"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, DateTime, String
@@ -26,7 +26,12 @@ class Speaker(Base):
     gender: Mapped[str | None] = mapped_column(String(20))
     first_seen_date: Mapped[datetime | None] = mapped_column(DateTime)
     meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )

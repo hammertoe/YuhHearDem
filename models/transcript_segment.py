@@ -1,6 +1,6 @@
 """Transcript segment model for semantic search."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import JSON, TEXT, DateTime, ForeignKey, Integer, String
@@ -52,4 +52,7 @@ class TranscriptSegment(Base):
     embedding_version: Mapped[str | None] = mapped_column(String(40))
     embedding: Mapped[list] = mapped_column(EmbeddingVector(), nullable=False)
     meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
