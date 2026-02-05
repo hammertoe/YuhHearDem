@@ -417,6 +417,7 @@ class VideoIngestor:
     ) -> None:
         await self.db.execute(delete(Relationship).where(Relationship.video_id == video.id))
         for relationship in relationships:
+            source_value: str = cast(str, relationship.source) if relationship.source else "unknown"
             self.db.add(
                 Relationship(
                     source_id=relationship.source_id,
@@ -425,7 +426,7 @@ class VideoIngestor:
                     sentiment=relationship.sentiment,
                     evidence=relationship.evidence,
                     confidence=relationship.confidence,
-                    source=relationship.source,
+                    source=source_value,
                     source_ref=relationship.source_ref,
                     video_id=video.id,
                     timestamp_seconds=relationship.timestamp_seconds,

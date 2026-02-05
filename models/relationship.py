@@ -22,7 +22,12 @@ class Relationship(Base):
     sentiment: Mapped[str | None] = mapped_column(String(20))
     evidence: Mapped[str] = mapped_column(TEXT, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
-    source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        default="unknown",
+    )
     source_ref: Mapped[str | None] = mapped_column(String(200))
     video_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("videos.id"))
     timestamp_seconds: Mapped[int | None] = mapped_column()
