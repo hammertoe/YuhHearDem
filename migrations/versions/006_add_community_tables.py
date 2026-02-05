@@ -74,11 +74,13 @@ def upgrade() -> None:
     )
 
     # Create index for summary search
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.create_index(
         "idx_community_summaries_summary_gin",
         "community_summaries",
         ["summary"],
         postgresql_using="gin",
+        postgresql_ops={"summary": "gin_trgm_ops"},
     )
 
     # Add GIN index for entity metadata (if not exists)
