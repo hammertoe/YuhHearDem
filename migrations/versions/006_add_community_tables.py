@@ -83,21 +83,26 @@ def upgrade() -> None:
         postgresql_ops={"summary": "gin_trgm_ops"},
     )
 
-    # Add GIN index for entity metadata (if not exists)
-    op.create_index(
-        "idx_entities_metadata_gin",
-        "entities",
-        ["meta_data"],
-        postgresql_using="gin",
-    )
+    # Add GIN index for entity metadata when column exists
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    entity_columns = [col["name"] for col in inspector.get_columns("entities")]
+
+    if "meta_data" in entity_columns:
+        op.create_index(
+            "idx_entities_metadata_gin",
+            "entities",
+            ["meta_data"],
+            postgresql_using="gin",
+        )
 
 
 def downgrade() -> None:
     # Drop indexes
-    op.drop_index("idx_community_summaries_summary_gin")
+    op.drop_index("idx_community_summaries_summary_gin", if_exists=True)
     op.drop_index("idx_entity_communities_level")
     op.drop_index("idx_entity_communities_community_id")
-    op.drop_index("idx_entities_metadata_gin")
+    op.drop_index("idx_entities_metadata_gin", table_name="entities", if_exists=True)
 
     # Drop tables
     op.drop_table("community_summaries")
