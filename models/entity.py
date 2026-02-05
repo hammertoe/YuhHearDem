@@ -25,7 +25,12 @@ class Entity(Base):
     description: Mapped[str | None] = mapped_column(TEXT)
     importance_score: Mapped[float] = mapped_column(Float, default=0.0)
     entity_confidence: Mapped[float | None] = mapped_column(Float)
-    source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        default="unknown",
+    )
     source_ref: Mapped[str | None] = mapped_column(String(200))
     speaker_canonical_id: Mapped[str | None] = mapped_column(String(100), index=True)
     legislation_id: Mapped[UUID | None] = mapped_column(

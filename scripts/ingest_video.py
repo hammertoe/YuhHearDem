@@ -375,6 +375,13 @@ class VideoIngestor:
             )
             existing = result.scalar_one_or_none()
             if existing:
+                source_value: str
+                if entity.source:
+                    source_value = cast(str, entity.source)
+                elif existing.source:
+                    source_value = cast(str, existing.source)
+                else:
+                    source_value = "unknown"
                 existing.entity_type = entity.entity_type
                 existing.entity_subtype = entity.entity_subtype
                 existing.name = entity.name
@@ -383,10 +390,11 @@ class VideoIngestor:
                 existing.description = getattr(entity, "description", None)
                 existing.importance_score = getattr(entity, "importance_score", 0.0)
                 existing.entity_confidence = getattr(entity, "entity_confidence", None)
-                existing.source = getattr(entity, "source", None)
+                existing.source = source_value
                 existing.source_ref = getattr(entity, "source_ref", None)
                 existing.speaker_canonical_id = getattr(entity, "speaker_canonical_id", None)
             else:
+                source_value: str = cast(str, entity.source) if entity.source else "unknown"
                 self.db.add(
                     Entity(
                         entity_id=entity.entity_id,
@@ -398,7 +406,7 @@ class VideoIngestor:
                         description=getattr(entity, "description", None),
                         importance_score=getattr(entity, "importance_score", 0.0),
                         entity_confidence=getattr(entity, "entity_confidence", None),
-                        source=getattr(entity, "source", None),
+                        source=source_value,
                         source_ref=getattr(entity, "source_ref", None),
                         speaker_canonical_id=getattr(entity, "speaker_canonical_id", None),
                     )
