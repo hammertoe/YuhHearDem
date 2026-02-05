@@ -32,7 +32,16 @@ class StubTranscriptionService:
     def __init__(self, transcript: SessionTranscript):
         self._transcript = transcript
 
-    def transcribe(self, video_url: str, order_paper: OrderPaper, speaker_id_mapping: dict):
+    def transcribe(
+        self,
+        video_url: str,
+        order_paper: OrderPaper,
+        speaker_id_mapping: dict,
+        fps: float | None = None,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        **kwargs,
+    ):
         return self._transcript
 
 
