@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, String
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import TEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,7 +11,7 @@ from core.database import Base
 
 
 class Entity(Base):
-    """Knowledge graph entity"""
+    """Knowledge graph entity with graph metrics"""
 
     __tablename__ = "entities"
 
@@ -38,6 +38,16 @@ class Entity(Base):
     )
     meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
     first_seen_date: Mapped[date | None] = mapped_column(Date)
+
+    # Graph metrics (pre-computed for efficient GraphRAG)
+    pagerank_score: Mapped[float | None] = mapped_column(Float, index=True)
+    degree_centrality: Mapped[int | None] = mapped_column(Integer, index=True)
+    betweenness_score: Mapped[float | None] = mapped_column(Float)
+    relationship_count: Mapped[int | None] = mapped_column(Integer, default=0)
+    in_degree: Mapped[int | None] = mapped_column(Integer, default=0)
+    out_degree: Mapped[int | None] = mapped_column(Integer, default=0)
+    metrics_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
@@ -63,4 +73,14 @@ class Entity(Base):
             "source_ref": self.source_ref,
             "speaker_canonical_id": self.speaker_canonical_id,
             "first_seen_date": self.first_seen_date.isoformat() if self.first_seen_date else None,
+            # Graph metrics
+            "pagerank_score": self.pagerank_score,
+            "degree_centrality": self.degree_centrality,
+            "betweenness_score": self.betweenness_score,
+            "relationship_count": self.relationship_count,
+            "in_degree": self.in_degree,
+            "out_degree": self.out_degree,
+            "metrics_updated_at": self.metrics_updated_at.isoformat()
+            if self.metrics_updated_at
+            else None,
         }

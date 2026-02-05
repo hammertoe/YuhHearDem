@@ -1,4 +1,4 @@
-"""Configuration management using pydantic-settings"""
+"""Configuration management using pydantic-settings."""
 
 from functools import lru_cache
 
@@ -7,10 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings"""
+    """Application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
 
     # Application
@@ -18,10 +21,6 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development")
     debug: bool = Field(default=True)
     log_level: str = Field(default="INFO")
-
-    # Server
-    host: str = Field(default="0.0.0.0")
-    port: int = Field(default=8000)
 
     # Database
     database_url: str = Field(
@@ -45,14 +44,11 @@ class Settings(BaseSettings):
     # Fuzzy Matching
     fuzzy_match_threshold: int = Field(default=85)
 
-    # CORS
-    cors_origins: list[str] = Field(default=["http://localhost:3000", "http://localhost:8000"])
-
     # Cache
     cache_ttl_seconds: int = Field(default=3600)
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance"""
+    """Get cached settings instance."""
     return Settings()

@@ -23,7 +23,7 @@ def set_test_database():
     get_settings.cache_clear()
 
 
-from app.config import get_settings
+from core.config import get_settings
 from core.database import Base, reset_engine
 
 
@@ -120,25 +120,6 @@ def override_get_db(db_engine):
                 await session.close()
 
     return _get_test_db
-
-
-@pytest.fixture(scope="function")
-async def client(override_get_db):
-    """Create async test client"""
-    from asgi_lifespan import LifespanManager
-    from httpx import ASGITransport, AsyncClient
-
-    from app.dependencies import get_db_session
-    from app.main import app
-
-    app.dependency_overrides[get_db_session] = override_get_db
-
-    async with LifespanManager(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as test_client:
-            yield test_client
-
-    app.dependency_overrides.clear()
 
 
 @pytest.fixture

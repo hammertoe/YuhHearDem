@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import get_settings
-from app.dependencies import get_db_session
+from core.config import get_settings
+from core.database import get_db
 from models.entity import Entity
 from models.relationship import Relationship
 from models.speaker import Speaker
@@ -911,8 +911,8 @@ async def main():
 
 @asynccontextmanager
 async def _db_session() -> AsyncIterator[AsyncSession]:
-    """Provide an async session from the app dependency."""
-    async for session in get_db_session():
+    """Provide an async session from the core database helper."""
+    async for session in get_db():
         yield session
 
 

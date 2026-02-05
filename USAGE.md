@@ -16,7 +16,7 @@ Complete data ingestion pipeline with the following scripts:
 - `scripts/README.md` - Detailed script documentation
 - `QUICKSTART.md` - Step-by-step getting started guide
 
-**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
+**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](./AGENTS.md) for details.
 
 ## How to Use
 
@@ -42,16 +42,11 @@ python scripts/ingest_order_paper.py data/papers/
 python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-**Step 3: Start Application**
+**Step 3: Match and Process Videos**
 ```bash
-source venv/bin/activate
-uvicorn app.main:app --reload
+python scripts/match_videos_to_papers.py
+python scripts/daily_pipeline.py
 ```
-
-**Access Interface:**
-- Chat: http://localhost:8000/static/chat.html
-- Graph: http://localhost:8000/static/graph.html
-- API Docs: http://localhost:8000/docs
 
 ### Option 2: Daily Pipeline (Recommended for Automation)
 
@@ -132,6 +127,12 @@ Note: The scraper may need manual adjustment based on website structure. Manual 
 - Flags ambiguous matches for review
 - Usage: `python scripts/match_videos_to_papers.py`
 
+### 5. dedupe_entities.py
+
+- Deduplicates entities after ingestion using fuzzy matching plus LLM validation
+- Rewrites mentions and relationships to the survivor entity
+- Usage: `python scripts/dedupe_entities.py --dry-run`
+
 ## Troubleshooting
 
 ### Module Not Found Errors
@@ -173,8 +174,7 @@ docker-compose restart
 
 1. Download sample PDF from parliament website
 2. Test ingestion with single files first
-3. Start exploring via chat interface
-4. Check knowledge graph visualization
+3. Run the daily pipeline for automation
 
 ---
 
@@ -186,8 +186,7 @@ docker-compose restart
 | [README.md](./README.md) | Project overview and quick start |
 | [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup |
 | [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
-| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
-| [deployment.md](./docs/deployment.md) | Deployment guide |
+| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
 
 ## Example Workflow
 
@@ -218,11 +217,9 @@ EOF
 # 4. Ingest video (URL passed directly to Gemini)
 python scripts/ingest_video.py --mapping data/video_mapping.json
 
-# 5. Start app
-uvicorn app.main:app --reload
-
-# 6. Open browser to: http://localhost:8000/static/chat.html
-# 7. Ask: "What topics were in the session?"
+# 5. Match and process videos
+python scripts/match_videos_to_papers.py
+python scripts/daily_pipeline.py
 ```
 
 ## Notes

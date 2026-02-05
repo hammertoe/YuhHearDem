@@ -5,15 +5,12 @@ description = "Barbados Parliamentary Knowledge Graph"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
     "sqlalchemy[asyncio]>=2.0.25",
     "asyncpg>=0.29.0",
     "alembic>=1.13.0",
     "pydantic>=2.5.3",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
-    "python-multipart>=0.0.6",
     "google-genai>=0.3.0",
     "spacy>=3.7.2",
     "sentence-transformers>=2.3.1",
@@ -22,7 +19,6 @@ dependencies = [
     "lxml>=5.1.0",
     "yt-dlp>=2023.12.30",
     "requests>=2.31.0",
-    "httpx>=0.26.0",
 ]
 
 [project.optional-dependencies]
@@ -75,10 +71,6 @@ lint.ignore = [
     "E402",  # module level import not at top of file (imports in fixtures are intentional)
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"api/routes/*.py" = ["B008"]
-"app/dependencies.py" = ["B008"]
-
 [tool.ruff.format]
 indent-style = "space"
 quote-style = "double"
@@ -112,7 +104,7 @@ asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
-source = ["app", "core", "api", "models", "parsers", "services"]
+source = ["core", "models", "parsers", "services", "scripts"]
 omit = [
     "tests/*",
     "venv/*",

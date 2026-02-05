@@ -61,23 +61,41 @@ class KnowledgeGraphStore:
             direction: Direction filter ('incoming', 'outgoing', 'all')
 
         Returns:
-            List of relationships
+            List of relationships with direction metadata
         """
-        query = select(Relationship).where(Relationship.source_id == entity_id)
-
         if direction == "incoming":
-            query = query.where(Relationship.target_id == entity_id)
+            # Entity is the target (receiving end)
+            query = select(Relationship).where(Relationship.target_id == entity_id)
         elif direction == "outgoing":
-            query = query.where(Relationship.source_id == entity_id)
+            # Entity is the source (origin)
+            query = select(Relationship).where(Relationship.source_id == entity_id)
         elif direction == "all":
-            query = query
+            # Both incoming and outgoing
+            query = select(Relationship).where(
+                (Relationship.source_id == entity_id) | (Relationship.target_id == entity_id)
+            )
         else:
             raise ValueError(f"Invalid direction: {direction}")
 
         result = await db.execute(query.limit(20))
         relationships = result.scalars().all()
 
-        return [rel.to_dict() for rel in relationships]
+        # Add direction metadata to each relationship
+        results = []
+        for rel in relationships:
+            rel_dict = rel.to_dict()
+            if rel.source_id == entity_id:
+                rel_dict["direction"] = "outgoing"
+                rel_dict["connected_entity_id"] = rel.target_id
+            elif rel.target_id == entity_id:
+                rel_dict["direction"] = "incoming"
+                rel_dict["connected_entity_id"] = rel.source_id
+            else:
+                rel_dict["direction"] = "unknown"
+                rel_dict["connected_entity_id"] = None
+            results.append(rel_dict)
+
+        return results
 
     async def get_mentions(
         self,
@@ -96,26 +114,43 @@ class KnowledgeGraphStore:
             limit: Maximum mentions to return
 
         Returns:
-            List of mentions
+            List of mentions with youtube_id
         """
         if not entity_id:
             return []
 
-        query = select(Mention).where(Mention.entity_id == entity_id)
+        from models.video import Video
+
+        query = (
+            select(
+                Mention,
+                Video.youtube_id,
+                Video.youtube_url,
+                Video.title,
+                Video.session_date,
+            )
+            .where(Mention.entity_id == entity_id)
+            .join(Video, Mention.video_id == Video.id)
+        )
 
         if video_id:
-            from models.video import Video
-
-            query = query.join(Video, Mention.video_id == Video.id).where(
-                Video.youtube_id == video_id
-            )
+            query = query.where(Video.youtube_id == video_id)
 
         query = query.order_by(Mention.timestamp_seconds).limit(limit)
 
         result = await db.execute(query)
-        mentions = result.scalars().all()
+        rows = result.all()
 
-        return [m.to_dict() for m in mentions]
+        mention_dicts = []
+        for mention, youtube_id, youtube_url, title, session_date in rows:
+            mention_dict = mention.to_dict()
+            mention_dict["youtube_id"] = youtube_id
+            mention_dict["youtube_url"] = youtube_url
+            mention_dict["video_title"] = title
+            mention_dict["session_date"] = session_date.isoformat() if session_date else None
+            mention_dicts.append(mention_dict)
+
+        return mention_dicts
 
     async def get_entity_details(
         self,
@@ -320,20 +355,27 @@ class KnowledgeGraphStore:
         video_result = await db.execute(select(Video).where(Video.id.in_(video_ids)))
         video_map = {v.id: v for v in video_result.scalars().all()}
 
-        return [
-            {
-                "segment_id": row.segment_id,
-                "text": row.text,
-                "video_id": str(row.video_id),
-                "video_title": video_map.get(row.video_id, Video()).title
-                if row.video_id in video_map
-                else "Unknown",
-                "speaker_id": row.speaker_id,
-                "timestamp_seconds": row.start_time_seconds,
-                "relevance": float(row.similarity),
-            }
-            for row in rows
-        ]
+        results = []
+        for row in rows:
+            video = video_map.get(row.video_id)
+            results.append(
+                {
+                    "segment_id": row.segment_id,
+                    "text": row.text,
+                    "video_id": str(row.video_id),
+                    "video_title": video.title if video else "Unknown",
+                    "youtube_id": video.youtube_id if video else None,
+                    "youtube_url": video.youtube_url if video else None,
+                    "session_date": video.session_date.isoformat()
+                    if video and video.session_date
+                    else None,
+                    "speaker_id": row.speaker_id,
+                    "timestamp_seconds": row.start_time_seconds,
+                    "relevance": float(row.similarity),
+                }
+            )
+
+        return results
 
     async def search_semantic_with_entities(
         self,

@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select, text
-from app.dependencies import get_db_session
+from core.database import get_db
 from models.video import Video
 from services.video_transcription import VideoTranscriptionService
 from services.gemini import GeminiClient
@@ -21,7 +21,7 @@ TEST_VIDEO_URL = "https://www.youtube.com/watch?v=P6cUJb9xqIs"  # Sample video
 async def main():
     print("Adding video to database...")
 
-    async for db in get_db_session():
+    async for db in get_db():
         # Check if video already exists
         existing = await db.execute(select(Video).where(Video.youtube_id == "P6cUJb9xqIs"))
 

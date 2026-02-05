@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.database import Base
-from app.config import get_settings
+from core.config import get_settings
 
 # Import all models to register them with Base.metadata
 import models  # noqa: F401

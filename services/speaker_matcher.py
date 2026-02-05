@@ -2,7 +2,7 @@
 
 from thefuzz import fuzz
 
-from app.config import get_settings
+from core.config import get_settings
 
 settings = get_settings()
 

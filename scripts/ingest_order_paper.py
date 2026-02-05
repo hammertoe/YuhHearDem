@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import get_settings
+from core.config import get_settings
 from core.database import Base
 from models.order_paper import OrderPaper as OrderPaperModel
 from models.speaker import Speaker

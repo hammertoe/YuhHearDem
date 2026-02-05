@@ -29,9 +29,16 @@ class QueryEntityExtractor:
                         "entity_type": {
                             "type": "string",
                             "enum": [
-                                "person", "organization", "place", "law",
-                                "concept", "event", "bill", "committee",
-                                "policy", "unknown",
+                                "person",
+                                "organization",
+                                "place",
+                                "law",
+                                "concept",
+                                "event",
+                                "bill",
+                                "committee",
+                                "policy",
+                                "unknown",
                             ],
                         },
                         "confidence": {
@@ -55,9 +62,14 @@ class QueryEntityExtractor:
         if not query or not query.strip():
             return []
 
-        prompt = f"""Extract all entities mentioned in this query about Barbados parliamentary proceedings.
+        prompt = f"""Extract entities mentioned in this query about Barbados parliamentary proceedings.
 
 Query: "{query}"
+
+IMPORTANT - Extract ONLY specific entities the user is asking about:
+- Ignore generic terms like "Barbados" when it appears in the prompt context but is not the actual focus of the user's question
+- Focus on what the user specifically wants to know about (topics, people, bills, organizations)
+- Only extract "Barbados" if the user explicitly asks about Barbados itself
 
 Identify specific people, organizations, bills, laws, places, and key concepts mentioned.
 

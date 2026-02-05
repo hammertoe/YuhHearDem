@@ -14,13 +14,12 @@ YuhHearDem uses advanced NLP techniques to:
 
 ## Tech Stack
 
-- **Backend**: FastAPI with Python 3.13
+- **Ingestion**: Python 3.13 scripts (async)
 - **Database**: PostgreSQL 16 with pgvector extension
 - **NLP**: spaCy, sentence-transformers
 - **Search**: Vector similarity search with fuzzy matching
-- **Frontend**: To be implemented
-- **Deployment**: Docker with blue-green strategy
-- **Reverse Proxy**: nginx with Let's Encrypt SSL
+
+Note: The web UI and API have been moved to a separate package. This repository focuses on scraping and ingestion tooling.
 
 ## Quick Start
 
@@ -71,70 +70,27 @@ cp .env.example .env
 # Run migrations
 alembic upgrade head
 
-# Start application
-uvicorn app.main:app --reload
+# Ingest videos (YouTube URLs processed directly by Gemini)
+python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
-
-### Docker (Local)
-
-```bash
-# Build the image
-docker build -t yuhheardem:dev .
-
-# Run the container
-docker run -p 8000:8000 \
-  -v $(pwd)/data:/app/data \
-  -e DATABASE_URL="postgresql+asyncpg://postgres:password@host.docker.internal:5432/yuhheardem" \
-  -e GOOGLE_API_KEY="your_key" \
-  yuhheardem:dev
-```
-
-### Production Deployment
-
-See [Deployment Quickstart](./docs/DEPLOYMENT_QUICKSTART.md) for production deployment instructions.
 
 ## Project Structure
 
 ```
 YuhHearDem/
-├── app/                 # FastAPI application
-│   ├── api/            # API routes and schemas
-│   ├── core/           # Core functionality
-│   ├── models/         # SQLAlchemy models
-│   ├── parsers/        # Document parsers
-│   ├── services/       # Business logic
-│   ├── static/         # Static assets
-│   └── templates/      # HTML templates
 ├── core/               # Shared utilities
 ├── data/               # Raw data files
 ├── docs/               # Documentation
 ├── migrations/         # Database migrations
+├── models/             # SQLAlchemy models
+├── parsers/            # Document parsers
 ├── processed/          # Processed data
+├── scripts/            # Scraping + ingestion tools
+├── services/           # Business logic
 ├── storage/            # Persistent storage
 ├── tests/              # Test suite
-├── deploy/             # Deployment scripts
-├── Dockerfile          # Docker image definition
 └── requirements.txt     # Python dependencies
 ```
-
-## API Endpoints
-
-### Health
-
-- `GET /health` - Health check endpoint
-- `GET /` - Root endpoint with application info
-- `GET /api` - API information
-
-### Parliamentary Search
-
-- `GET /api/speeches` - Search parliamentary speeches
-- `GET /api/speakers` - List and search speakers
-- `GET /api/documents` - Search documents
-
-### Vector Search
-
-- `POST /api/search` - Semantic search using embeddings
-- `GET /api/similar` - Find similar content
 
 ## Development
 
@@ -145,7 +101,7 @@ YuhHearDem/
 pytest
 
 # Run with coverage
-pytest --cov=app --cov=core --cov-report=html
+pytest --cov=core --cov=models --cov=parsers --cov=services --cov=scripts --cov-report=html
 
 # Run specific test
 pytest tests/test_specific_file.py::test_function
@@ -161,7 +117,7 @@ ruff check .
 ruff format .
 
 # Type checking
-mypy app/ core/
+mypy core/ models/ parsers/ services/ scripts/
 
 # Run pre-commit hooks
 pre-commit run --all-files
@@ -183,48 +139,6 @@ alembic downgrade -1
 alembic history
 ```
 
-## Deployment
-
-### Production Deployment
-
-YuhHearDem uses a blue-green deployment strategy on the `yhd` server:
-
-- **Blue-green deployment** for zero-downtime releases
-- **Docker containers** for isolation and reproducibility
-- **PostgreSQL with pgvector** for vector search
-- **nginx** as reverse proxy with SSL
-- **GitHub Actions** for automated builds and deployments
-
-For detailed deployment instructions, see:
-
-- [Deployment Quickstart](./docs/DEPLOYMENT_QUICKSTART.md) - Get started with production deployment
-- [Deployment Guide](./docs/deployment.md) - Comprehensive deployment documentation
-
-### Manual Deployment
-
-```bash
-# SSH to production server
-ssh yhd
-
-# Deploy latest version
-cd /opt/yuhheardem
-sudo ./deploy/deploy.sh latest
-
-# Check deployment status
-sudo ./deploy/deploy.sh status
-
-# Rollback if needed
-sudo ./deploy/deploy.sh rollback
-```
-
-### Automated Deployment
-
-Every push to `main` triggers:
-
-1. Build Docker image
-2. Push to GitHub Container Registry
-3. SSH to production server
-4. Deploy new version
 
 ## Configuration
 
@@ -242,7 +156,6 @@ GOOGLE_API_KEY=your_api_key
 # Application
 APP_ENV=development|production
 DEBUG=True|False
-CORS_ORIGINS=["http://localhost:3000"]
 
 # Vector Search
 EMBEDDING_MODEL=all-MiniLM-L6-v2
@@ -255,10 +168,6 @@ FUZZY_MATCH_THRESHOLD=85
 ## Documentation
 
 - [AGENTS.md](./AGENTS.md) - Comprehensive codebase guide with code map (start here for development)
-- [Architecture Analysis](./docs/ARCHITECTURE_ANALYSIS.md) - System architecture and design decisions
-- [Rebuild Plan](./docs/REBUILD_PLAN.md) - Technical implementation details
-- [Deployment Quickstart](./docs/DEPLOYMENT_QUICKSTART.md) - Get started with deployment
-- [Deployment Guide](./docs/deployment.md) - Comprehensive deployment documentation
 - [Scripts Documentation](./scripts/README.md) - Data ingestion scripts guide
 
 ### Documentation Index
@@ -270,11 +179,6 @@ FUZZY_MATCH_THRESHOLD=85
 | [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup | New users |
 | [USAGE.md](./USAGE.md) | Script usage and examples | Users |
 | [scripts/README.md](./scripts/README.md) | Data ingestion guide | Users |
-| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture | Developers |
-| [REBUILD_PLAN.md](./docs/REBUILD_PLAN.md) | Implementation plan | Developers |
-| [deployment.md](./docs/deployment.md) | Deployment guide | DevOps |
-| [DEPLOYMENT_QUICKSTART.md](./docs/DEPLOYMENT_QUICKSTART.md) | Quick deployment | DevOps |
-| [GITHUB_SECRETS.md](./docs/GITHUB_SECRETS.md) | Secrets setup | DevOps |
 
 ## Contributing
 
@@ -302,7 +206,6 @@ For issues, questions, or contributions:
 
 - Open an issue on GitHub
 - Check existing documentation
-- Review deployment status on server
 
 ## Acknowledgments
 

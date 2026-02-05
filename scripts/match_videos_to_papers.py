@@ -33,7 +33,7 @@ from sqlalchemy import select, and_, or_, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import get_db_session
+from core.database import get_db
 from models.video import Video
 from models.order_paper import OrderPaper
 from services.video_paper_matcher import VideoPaperMatcher, TitlePatternMatcher, MatchResult
@@ -67,7 +67,7 @@ class VideoPaperMatchingCLI:
         logger.info(f"Dry run: {self.dry_run}")
         logger.info("=" * 80)
 
-        async for db in get_db_session():
+        async for db in get_db():
             # Load all order papers
             order_papers_result = await db.execute(
                 select(OrderPaper).order_by(OrderPaper.session_date.desc())
@@ -214,7 +214,7 @@ class VideoPaperMatchingCLI:
         logger.info("Commands: [y]es confirm, [n]o skip, [s]how candidates, [q]uit")
         logger.info("=" * 80 + "\n")
 
-        async for db in get_db_session():
+        async for db in get_db():
             # Load order papers
             order_papers_result = await db.execute(select(OrderPaper))
             order_papers = order_papers_result.scalars().all()

@@ -13,7 +13,7 @@ from google import genai
 
 load_dotenv()
 
-from app.config import get_settings
+from core.config import get_settings
 from scripts.ingest_order_paper import OrderPaperIngestor
 from scripts.scrape_session_papers import SessionPaperScraper
 from services.gemini import GeminiClient

@@ -8,7 +8,7 @@ This guide walks you through getting YuhHearDem running with real data.
 - [scripts/README.md](./scripts/README.md) - Detailed script documentation
 - [USAGE.md](./USAGE.md) - Usage examples
 
-**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
+**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](./AGENTS.md) for details.
 
 ## Step 1: Setup
 
@@ -94,39 +94,15 @@ Then ingest (YouTube URL processed directly by Gemini - no download needed):
 python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-## Step 4: Start Application
+## Step 4: Match and Process Videos
 
 ```bash
-# Start the API server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Match videos to order papers
+python scripts/match_videos_to_papers.py
+
+# Run the daily pipeline (scrape, match, process)
+python scripts/daily_pipeline.py
 ```
-
-## Access the Interface
-
-Open your browser to:
-
-1. **Chat Interface**: http://localhost:8000/static/chat.html
-   - Ask questions about parliamentary sessions
-   - Get answers with citations
-   - View related entities
-
-2. **Graph Visualization**: http://localhost:8000/static/graph.html
-   - See entity relationships
-   - Explore knowledge graph
-
-3. **API Documentation**: http://localhost:8000/docs
-   - Interactive API explorer
-   - Test endpoints
-
-## Example Queries
-
-Try these questions in the chat interface:
-
-- "What legislation was discussed on January 15, 2024?"
-- "Who spoke about the Cybercrime Bill?"
-- "Show me all mentions of the Finance Minister"
-- "What topics were covered in recent sessions?"
-- "What entities are related to tax policy?"
 
 ## Troubleshooting
 
@@ -194,10 +170,9 @@ Automatically happens during video transcription:
 
 Once you have data ingested:
 
-1. Explore the chat interface
-2. Check the knowledge graph visualization
-3. Try different query types
-4. Add more data as needed
+1. Add more session papers and videos
+2. Run the daily pipeline for automation
+3. Export or query the knowledge graph from scripts
 
 For more details, see:
 - `scripts/README.md` - Detailed script documentation
@@ -213,5 +188,4 @@ For more details, see:
 | [README.md](./README.md) | Project overview and quick start |
 | [USAGE.md](./USAGE.md) | Usage examples |
 | [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
-| [ARCHITECTURE_ANALYSIS.md](./docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
-| [deployment.md](./docs/deployment.md) | Deployment guide |
+| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |

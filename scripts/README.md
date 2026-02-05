@@ -214,6 +214,21 @@ Matches YouTube videos to order papers automatically.
 - `--interactive`: Run interactive review mode
 - `--dry-run`: Show what would be matched without changes
 
+### `dedupe_entities.py`
+
+Post-ingest entity deduplication using fuzzy matching and LLM review.
+
+```bash
+# Dry run with default thresholds
+python scripts/dedupe_entities.py --dry-run
+
+# Run with stricter confidence
+python scripts/dedupe_entities.py --confidence 0.9
+
+# Only dedupe specific types
+python scripts/dedupe_entities.py --types person,organization,law
+```
+
 ## Troubleshooting
 
 ### Scraper Issues
@@ -243,20 +258,9 @@ If ingestion fails:
 
 After ingestion:
 
-1. **Start the API:**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-2. **Access the chat interface:**
-   - Open browser to `http://localhost:8000`
-   - Use `/chat` for the chat interface
-   - Use `/graph` for the knowledge graph visualization
-
-3. **Query the system:**
-   - Ask about legislation, speakers, sessions
-   - View entity relationships in the graph
-   - Search transcripts semantically
+1. Run the daily pipeline for automation
+2. Export or analyze knowledge graph data from scripts
+3. Add additional session papers and video mappings
 
 ---
 
@@ -268,5 +272,4 @@ After ingestion:
 | [README.md](../README.md) | Project overview and quick start |
 | [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local setup |
 | [USAGE.md](../USAGE.md) | Usage examples |
-| [ARCHITECTURE_ANALYSIS.md](../docs/ARCHITECTURE_ANALYSIS.md) | System architecture |
-| [deployment.md](../docs/deployment.md) | Deployment guide |
+| [scripts/README.md](./README.md) | Data ingestion scripts guide |

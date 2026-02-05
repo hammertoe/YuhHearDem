@@ -45,11 +45,11 @@ jobs:
 
       - name: Run linting
         run: |
-          ruff check app/ models/ api/ services/ parsers/ storage/ tests/
+          ruff check core/ models/ services/ parsers/ storage/ scripts/ tests/
 
       - name: Run type checking
         run: |
-          mypy app/ models/ api/
+          mypy core/ models/ services/ parsers/ scripts/
         continue-on-error: true
 
       - name: Run tests

@@ -10,13 +10,13 @@ class DummySession:
 
 
 @pytest.mark.asyncio
-async def test_db_session_context_uses_get_db_session(monkeypatch):
-    """Context manager should yield from get_db_session."""
+async def test_db_session_context_uses_get_db(monkeypatch):
+    """Context manager should yield from get_db."""
 
-    async def _dummy_get_db_session():
+    async def _dummy_get_db():
         yield DummySession()
 
-    monkeypatch.setattr(ingest_video, "get_db_session", _dummy_get_db_session)
+    monkeypatch.setattr(ingest_video, "get_db", _dummy_get_db)
 
     async with ingest_video._db_session() as session:
         assert isinstance(session, DummySession)

@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from app.config import get_settings
+from core.config import get_settings
 
 settings = get_settings()
 
@@ -26,7 +26,3 @@ def setup_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     root_logger.addHandler(console_handler)
-
-    # Set uvicorn log level
-    logging.getLogger("uvicorn").setLevel(log_level)
-    logging.getLogger("uvicorn.access").setLevel(log_level)

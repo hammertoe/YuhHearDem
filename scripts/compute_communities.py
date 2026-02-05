@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from app.config import get_settings
+from core.config import get_settings
 from services.community_detection import CommunityDetection
 from services.community_summarizer import CommunitySummarizer
 from services.gemini import GeminiClient
