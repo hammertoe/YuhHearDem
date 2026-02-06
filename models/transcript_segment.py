@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import uuid as _uuid
 
-from sqlalchemy import ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -38,7 +38,7 @@ class TranscriptSegment(Base):
 
     __tablename__ = "transcript_segments"
 
-    id = mapped_column(func.gen_random_uuid(), primary_key=True)
+    id: Mapped[UUID] = mapped_column(server_default="gen_random_uuid()", primary_key=True)
     segment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     session_id: Mapped[str] = mapped_column(
         String(100),
@@ -67,4 +67,4 @@ class TranscriptSegment(Base):
     embedding_model: Mapped[str | None] = mapped_column(String(80))
     embedding_version: Mapped[str | None] = mapped_column(String(40))
     meta_data: Mapped[dict] = mapped_column(JSON, nullable=False, default={})
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
