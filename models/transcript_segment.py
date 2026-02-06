@@ -38,7 +38,7 @@ class TranscriptSegment(Base):
 
     __tablename__ = "transcript_segments"
 
-    id: Mapped[pg_UUID] = mapped_column(primary_key=True)
+    id: Mapped[_uuid.UUID] = mapped_column(primary_key=True)
     video_id: Mapped[str] = mapped_column(
         String(20),
         ForeignKey("videos.video_id", ondelete="CASCADE"),

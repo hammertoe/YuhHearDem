@@ -18,7 +18,7 @@ class Video(Base):
 
     __tablename__ = "videos"
 
-    id: Mapped[pg_UUID] = mapped_column(primary_key=True)
+    id: Mapped[_uuid.UUID] = mapped_column(primary_key=True)
     platform: Mapped[str] = mapped_column(String(50), nullable=False, default="youtube")
     url: Mapped[str] = mapped_column(String, nullable=False)
     duration_seconds: Mapped[int | None] = mapped_column(Integer)

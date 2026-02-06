@@ -18,7 +18,7 @@ class Speaker(Base):
 
     __tablename__ = "speakers"
 
-    id: Mapped[UUID] = mapped_column(primary_key=True)
+    id: Mapped[_uuid.UUID] = mapped_column(primary_key=True)
     canonical_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(100))
