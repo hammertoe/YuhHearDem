@@ -238,7 +238,14 @@ class VideoIngestor:
                 )
 
         except Exception as e:
-            logger.warning("Failed to extract video metadata: %s", e)
+            error_msg = str(e)
+            if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
+                logger.warning(
+                    "YouTube blocked metadata extraction (bot detection). "
+                    "Use --session-date to specify the session date explicitly."
+                )
+            else:
+                logger.warning("Failed to extract video metadata: %s", e)
 
         return None, None, None, None
 
