@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, Index, Integer, String
+from sqlalchemy import ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,7 +34,7 @@ class RelationshipEvidence(Base):
         String(20), ForeignKey("videos.video_id", ondelete="CASCADE"), nullable=False
     )
     start_time_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 
     __table_args__ = (
         Index(

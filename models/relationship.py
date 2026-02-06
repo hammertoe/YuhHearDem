@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Float, ForeignKey, String, Text, text
+from sqlalchemy import Float, ForeignKey, String, Text, text, func
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,4 +39,4 @@ class Relationship(Base):
     )
     source_ref: Mapped[str | None] = mapped_column(String(100))
     confidence: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())

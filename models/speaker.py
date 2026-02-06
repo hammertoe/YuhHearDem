@@ -1,8 +1,8 @@
 """Speaker model"""
 
 from datetime import datetime, timezone
+from sqlalchemy import func, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
-from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -13,7 +13,7 @@ class Speaker(Base):
 
     __tablename__ = "speakers"
 
-    id = mapped_column(pg_UUID, server_default="gen_random_uuid()", primary_key=True)
+    id = mapped_column(pg_UUID, server_default=func.gen_random_uuid(), primary_key=True)
     canonical_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(100))
@@ -23,5 +23,5 @@ class Speaker(Base):
     gender: Mapped[str | None] = mapped_column(String(20))
     aliases: Mapped[list] = mapped_column(JSON, nullable=False, default=[])
     meta_data: Mapped[dict] = mapped_column(JSON, nullable=False, default={})
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
-    updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
