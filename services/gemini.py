@@ -3,11 +3,51 @@
 import json
 import os
 import time
+from functools import wraps
+from typing import Callable, ParamSpec, TypeVar
 from pathlib import Path
 from typing import Any, Iterable, cast
 
 from google import genai
 from google.genai import types
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+class RateLimiter:
+    """Simple in-memory rate limiter."""
+
+    def __init__(self, max_calls: int = 60, period: float = 60.0) -> None:
+        self.max_calls = max_calls
+        self.period = period
+        self.calls: list[float] = []
+
+    def wait_if_needed(self) -> None:
+        now = time.time()
+        self.calls = [call_time for call_time in self.calls if now - call_time < self.period]
+        if len(self.calls) >= self.max_calls:
+            sleep_time = self.period - (now - self.calls[0])
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+        self.calls.append(now)
+
+
+def rate_limit(limiter: RateLimiter) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator to apply rate limiting to a function."""
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            limiter.wait_if_needed()
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+_rate_limiter = RateLimiter()
 
 
 class GeminiClient:
@@ -119,6 +159,7 @@ class GeminiClient:
             print(error_msg)  # Log for debugging
             raise  # Re-raise as original exception
 
+    @rate_limit(_rate_limiter)
     def analyze_pdf_with_vision(
         self,
         pdf_path: Path,
@@ -184,6 +225,7 @@ class GeminiClient:
 
         raise RuntimeError("Failed to analyze PDF with Gemini")
 
+    @rate_limit(_rate_limiter)
     def analyze_video_with_transcript(
         self,
         video_url: str,
@@ -274,6 +316,7 @@ class GeminiClient:
 
         raise RuntimeError("Failed to analyze video with Gemini")
 
+    @rate_limit(_rate_limiter)
     def extract_entities_and_concepts(
         self,
         transcript_data: dict,
@@ -346,6 +389,7 @@ class GeminiClient:
 
         raise RuntimeError("Failed to extract entities with Gemini")
 
+    @rate_limit(_rate_limiter)
     def generate_structured(
         self,
         prompt: str,
@@ -405,10 +449,11 @@ class GeminiClient:
 
         raise RuntimeError("Failed to generate structured output with Gemini")
 
+    @rate_limit(_rate_limiter)
     def embed_texts(
         self,
         texts: list[str],
-        model: str = "text-embedding-004",
+        model: str | None = None,
         stage: str = "embeddings",
     ) -> list[list[float]]:
         """
@@ -416,11 +461,14 @@ class GeminiClient:
 
         Args:
             texts: List of text strings to embed
-            model: Embedding model name
+            model: Embedding model name (if None, uses v1beta default)
 
         Returns:
             List of embedding vectors
         """
+        if model is None:
+            model = "text-embedding-004"  # Default model for v1beta
+
         start_time_perf = time.perf_counter()
         response = self.client.models.embed_content(
             model=model,

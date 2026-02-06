@@ -11,7 +11,7 @@ services:
     container_name: yuhheardem-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: YHD_9f3b7c2d5a8e1f6g
       POSTGRES_DB: yuhheardem_test
     ports:
       - "5432:5432"

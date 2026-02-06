@@ -3,16 +3,15 @@
 
 import argparse
 import logging
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
-
-import sys
 
 try:
     import requests
     from bs4 import BeautifulSoup
-except ImportError as e:
+except ImportError:
     sys.stderr.write("Error: requests and beautifulsoup4 not installed.\n")
     sys.stderr.write("Install with: pip install requests beautifulsoup4\n")
     sys.exit(1)
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 class SessionPaperScraper:
     """Scrapes order papers from parliament website"""
 
-    def __init__(self, base_url: str = "https://www.barbadosparliament.com"):
+    def __init__(self, base_url: str = "https://www.barbadosparliament.com") -> None:
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update(
@@ -232,7 +231,7 @@ class SessionPaperScraper:
         return re.sub(invalid_chars, "_", filename)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape Barbados Parliament session papers")
     parser.add_argument(
         "--chamber",

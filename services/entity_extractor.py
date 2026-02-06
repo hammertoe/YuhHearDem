@@ -3,9 +3,13 @@
 from dataclasses import dataclass, field, is_dataclass
 from typing import Any
 
+import logging
+
 from models.entity import Entity
 from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient
+
+logger = logging.getLogger(__name__)
 
 # Two-pass extraction schemas (optimized for quality)
 ENTITY_ONLY_SCHEMA = {
@@ -198,7 +202,7 @@ class EntityExtractor:
     proper relationships, sentiment analysis, and evidence citations.
     """
 
-    def __init__(self, api_key: str | None = None, thinking_budget: int | None = None):
+    def __init__(self, api_key: str | None = None, thinking_budget: int | None = None) -> None:
         """
         Initialize the entity extractor with Gemini client.
 
@@ -209,7 +213,8 @@ class EntityExtractor:
         self.gemini_client = GeminiClient(api_key=api_key, thinking_budget=thinking_budget)
 
     # Extraction configuration
-    MAX_TWO_PASS_SIZE_KB = 3500  # Gemini ~3.8 MB limit with safety margin
+    # Gemini payload limit is ~3.8 MB; keep a safety buffer for prompts and schema.
+    MAX_TWO_PASS_SIZE_KB = 3500
 
     def extract_from_transcript(
         self,
@@ -305,8 +310,15 @@ class EntityExtractor:
                 print(
                     f"         ✓ Found {len(chunk_result.entities)} entities, {len(chunk_result.relationships)} relationships"
                 )
-            except Exception as e:
-                print(f"         ⚠️  Chunk {i} failed: {e}")
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                logger.error(
+                    "Chunk %s/%s failed for '%s': %s",
+                    i,
+                    len(transcript.agenda_items),
+                    agenda_item.topic_title[:60],
+                    e,
+                    exc_info=True,
+                )
                 # Continue with other chunks
 
         # Merge results
@@ -577,11 +589,13 @@ IMPORTANT:
             attributes = entity_dict.get("attributes")
             evidence = entity_dict.get("evidence")
             if attributes or evidence:
-                entity.meta_data = {}
+                meta_data: dict[str, Any] = {}
                 if attributes:
-                    entity.meta_data["attributes"] = attributes
+                    meta_data["attributes"] = attributes
                 if evidence:
-                    entity.meta_data["evidence"] = evidence
+                    meta_data["evidence"] = evidence
+                if meta_data:
+                    entity.meta_data = meta_data
             entities.append(entity)
 
         return entities
@@ -658,7 +672,7 @@ IMPORTANT:
             return data if isinstance(data, dict) else {}
         return {}
 
-    def _normalize_json(self, payload):
+    def _normalize_json(self, payload: Any) -> Any:
         from datetime import date, datetime
 
         if isinstance(payload, datetime):

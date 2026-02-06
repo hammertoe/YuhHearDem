@@ -1,6 +1,6 @@
 # Ingestion Scripts
 
-Complete pipeline for scraping, parsing, and ingesting Barbados parliamentary data.
+Complete pipeline for scraping and ingesting Barbados parliamentary data.
 
 **Related Documentation**:
 - [AGENTS.md](../AGENTS.md) - Comprehensive codebase guide with code map
@@ -8,7 +8,7 @@ Complete pipeline for scraping, parsing, and ingesting Barbados parliamentary da
 - [QUICKSTART.md](../QUICKSTART.md) - Step-by-step local setup
 - [USAGE.md](../USAGE.md) - Usage examples
 
-**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
+**Important**: This system processes YouTube videos by passing URLs directly to Gemini API. Video files are never downloaded locally. See [AGENTS.md](../AGENTS.md) for details.
 
 ## Prerequisites
 
@@ -20,34 +20,23 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/yuhheardem
 
 ## Quick Start
 
-### 1. Run Daily Pipeline (Recommended)
+### 1. Ingest Videos (Primary Workflow)
 
-Automated daily pipeline that scrapes papers, monitors YouTube, matches videos, and transcribes:
-
-```bash
-# Run full daily pipeline (no video download needed)
-python scripts/daily_pipeline.py
-
-# Run specific steps
-python scripts/daily_pipeline.py --step scrape
-python scripts/daily_pipeline.py --step match
-```
-
-### 2. Run Full Ingestion Pipeline
-
-Scrapes session papers, downloads them, parses with Gemini, and saves to database:
+Video ingestion now handles session creation, agenda items, transcription, and knowledge graph extraction:
 
 ```bash
-# Scrape and ingest order papers
-python scripts/run_full_ingestion.py
+# Single video URL (YouTube URL passed directly to Gemini - no download)
+python scripts/ingest_video.py \
+    --url https://www.youtube.com/watch?v=VIDEO_ID \
+    --chamber house \
+    --session-date "2024-01-15" \
+    --sitting-number "10"
 
-# With specific chamber and limit
-python scripts/run_full_ingestion.py --chamber house --max-papers 10
+# From mapping file
+python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-### 3. Individual Steps
-
-#### Scrape Session Papers
+### 2. Scrape Session Papers (Optional, for context only)
 
 ```bash
 # List available papers
@@ -60,183 +49,125 @@ python scripts/scrape_session_papers.py --download
 python scripts/scrape_session_papers.py --chamber senate --download
 ```
 
-#### Ingest Order Papers
+## New Schema Overview
 
-```bash
-# Single PDF
-python scripts/ingest_order_paper.py data/papers/session_paper.pdf
+The database schema has been completely redesigned to use stable, compact IDs:
 
-# All PDFs in directory
-python scripts/ingest_order_paper.py data/papers/
+### Tables
 
-# With associated YouTube video
-python scripts/ingest_order_paper.py data/papers/paper.pdf --video-id VIDEO_ID
+- **sessions**: Parliamentary sessions (`session_id` = `s_{sitting_number}_{YYYY_MM_DD}`)
+- **videos**: Video recordings (`video_id` = YouTube ID)
+- **speakers**: Canonical speaker database (`speaker_id` = `p_{last_name}_{initials}`)
+- **agenda_items**: Agenda topics from order papers (`agenda_item_id` = `{session_id}_a{index}`)
+- **transcript_segments**: Transcribed segments (`segment_id` = `{youtube_id}_{start_time_seconds:05d}`)
+- **entities**: Knowledge graph entities (`entity_id` = stable slug or source ID)
+- **relationships**: Entity relationships (`relationship_id` = UUID)
+- **relationship_evidence**: Evidence links (`evidence_id` = UUID)
+
+### Evidence Links
+
+Relationship evidence is now explicit - no heuristic matching at runtime. Each relationship links to specific transcript segments via `relationship_evidence` table.
+
+## Script Details
+
+### `ingest_video.py`
+
+Primary ingestion script that creates the complete knowledge graph.
+
+**Features:**
+- Creates Session and Video records with stable IDs
+- Transcribes with speaker attribution using Gemini Video API
+- Creates AgendaItem records for each agenda topic
+- Creates TranscriptSegment records with stable IDs
+- Extracts entities and relationships
+- Creates RelationshipEvidence rows linking relationships to segments
+- Stores embeddings and model metadata
+- Skips already ingested videos
+
+**Options:**
+- `--url`: YouTube URL to ingest
+- `--mapping`: JSON file with video metadata
+- `--chamber`: house or senate (default: house)
+- `--session-date`: Session date (YYYY-MM-DD)
+- `--sitting-number`: Sitting number
+- `--session-id`: Stable session ID (auto-generated if not provided)
+- `--fps`: Frames per second for video sampling
+
+**Video Mapping Format:**
+```json
+[
+    {
+        "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+        "chamber": "house",
+        "session_date": "2024-01-15",
+        "session_id": "s_10_2024_01_15",
+        "sitting_number": "10"
+    }
+]
 ```
 
-#### Ingest Videos
+### `scrape_session_papers.py`
+
+Scraps session papers from parliament website.
+
+**Note:** This script is optional and primarily used for reference. Video ingestion works independently.
+
+**Options:**
+- `--chamber`: house or senate (default: house)
+- `--download`: Download PDFs to data directory
+
+### `reset_db.py`
+
+Database reset utility for development.
+
+Drops all tables and recreates from SQLAlchemy models.
 
 ```bash
-# Single video URL (YouTube URL passed directly to Gemini - no download)
-python scripts/ingest_video.py \
-    --url https://www.youtube.com/watch?v=VIDEO_ID \
-    --session-date 2024-01-15 \
-    --chamber house
-
-# From mapping file
-python scripts/ingest_video.py --mapping data/video_ingest_mapping.json
-
-# With order paper context (better transcription accuracy)
-python scripts/ingest_video.py \
-    --url https://www.youtube.com/watch?v=VIDEO_ID \
-    --order-paper data/papers/session_paper.pdf
-```
-
-#### Match Videos to Papers
-
-```bash
-# Match all unprocessed videos
-python scripts/match_videos_to_papers.py
-
-# Show only ambiguous matches for manual review
-python scripts/match_videos_to_papers.py --review-only
-
-# Interactive review mode
-python scripts/match_videos_to_papers.py --interactive
+python scripts/reset_db.py
 ```
 
 ## Workflow
 
 ### Complete Workflow
 
-1. **Create directories:**
-   ```bash
-   mkdir -p data/papers
-   ```
+1. **Get video URLs:**
+   - Go to Barbados Parliament YouTube channel
+   - Copy video URLs
 
-2. **Run full pipeline:**
-   ```bash
-   python scripts/run_full_ingestion.py --chamber house --max-papers 10
-   ```
+2. **Create video mapping:**
+   - Create `data/video_mapping.json` with metadata
 
-3. **Monitor and match videos:**
-   ```bash
-   python scripts/daily_pipeline.py --step monitor
-   python scripts/daily_pipeline.py --step match
-   ```
+3. **Ingest videos:**
+   - Run video ingestion script
+   - Stable IDs auto-generated from metadata
 
-### Manual Workflow
+## Schema Changes
 
-For more control, run steps individually:
+### Removed (Old Schema)
+- `order_papers` table
+- `mentions` table (replaced by `relationship_evidence`)
+- `messages` table (moved to UI package)
+- `community_*` tables (moved to UI package)
+- GraphRAG-specific tables (moved to UI package)
 
-1. **Scrape session papers:**
-   ```bash
-   python scripts/scrape_session_papers.py --download --output data/papers
-   ```
+### Added (New Schema)
+- `agenda_items` table (links sessions to transcript segments)
+- `relationship_evidence` table (explicit evidence links)
+- Stable text primary keys on all major tables
+- Embedding support on `transcript_segments`
 
-2. **Ingest order papers:**
-   ```bash
-   python scripts/ingest_order_paper.py data/papers/
-   ```
+## ID Formats
 
-3. **Create video mapping** (matches PDFs to videos):
-   Create `data/video_ingest_mapping.json`:
-   ```json
-   [
-       {
-           "youtube_url": "https://www.youtube.com/watch?v=ABC123",
-           "chamber": "house",
-           "session_date": "2024-01-15",
-           "order_paper_pdf": "data/papers/session_paper.pdf"
-       }
-   ]
-   ```
+All IDs are deterministic and stable:
 
-4. **Ingest videos (URLs processed directly by Gemini):**
-   ```bash
-   python scripts/ingest_video.py --mapping data/video_ingest_mapping.json
-   ```
-
-## Script Details
-
-### `run_full_ingestion.py`
-
-Orchestrates complete pipeline for order papers.
-
-**Options:**
-- `--chamber`: house or senate (default: house)
-- `--max-papers`: Max order papers to scrape
-- `--output`: Output directory (default: data/)
-
-### `daily_pipeline.py`
-
-Automated daily pipeline for complete workflow.
-
-**Steps:**
-1. `scrape` - Scrape new order papers
-2. `monitor` - Check YouTube for new videos
-3. `match` - Match videos to order papers
-4. `process` - Transcribe matched videos (using URLs, no download)
-
-### `scrape_session_papers.py`
-
-Scrapes session papers from parliament website.
-
-**Note:** You may need to adjust URL patterns and selectors based on actual website structure. The current implementation is a template.
-
-### `ingest_order_paper.py`
-
-Parses PDFs with Gemini Vision and saves to database.
-
-**Features:**
-- Extracts speakers and agenda items
-- Creates video records if YouTube ID provided
-- Syncs speakers to database
-- Skips already ingested papers (by hash)
-
-### `ingest_video.py`
-
-Transcribes videos with Gemini and saves to database.
-
-**Features:**
-- Transcribes with speaker attribution
-- Extracts entities from transcript
-- Can use order paper for context
-- Skips already ingested videos
-- **Uses YouTube URLs directly** - no video download required
-
-### `match_videos_to_papers.py`
-
-Matches YouTube videos to order papers automatically.
-
-**Options:**
-- `--threshold`: Confidence threshold for auto-accept (default: 90)
-- `--review-only`: Only show ambiguous matches
-- `--interactive`: Run interactive review mode
-- `--dry-run`: Show what would be matched without changes
-
-### `dedupe_entities.py`
-
-Post-ingest entity deduplication using fuzzy matching and LLM review.
-
-```bash
-# Dry run with default thresholds
-python scripts/dedupe_entities.py --dry-run
-
-# Run with stricter confidence
-python scripts/dedupe_entities.py --confidence 0.9
-
-# Only dedupe specific types
-python scripts/dedupe_entities.py --types person,organization,law
-```
+- `session_id`: `s_{sitting_number}_{YYYY_MM_DD}`
+- `video_id`: YouTube ID (e.g., `abc123xyz`)
+- `segment_id`: `{youtube_id}_{start_time_seconds:05d}` (e.g., `abc123xyz_00005`)
+- `agenda_item_id`: `{session_id}_a{index}` (e.g., `s_10_2026_01_15_a0`)
+- `speaker_id`: `p_{last_name}_{initials}` (e.g., `p_smith_jd`)
+- `entity_id`: Stable slug from source or provided (e.g., `bill_road_traffic_2025`)
 
 ## Troubleshooting
-
-### Scraper Issues
-
-If session papers don't scrape:
-1. Check parliament website is accessible
-2. Inspect HTML structure and update selectors in `scrape_session_papers.py`
-3. Download PDFs manually if needed
 
 ### Gemini API Issues
 
@@ -244,32 +175,36 @@ If transcription/parsing fails:
 1. Check API key in `.env`
 2. Verify quota and billing
 3. Check network connectivity to Google API
-4. Reduce chunk size if hitting token limits
+4. Reduce FPS if hitting token limits
 
 ### Database Issues
 
 If ingestion fails:
 1. Ensure PostgreSQL is running: `docker-compose up`
 2. Check database URL in `.env`
-3. Run migrations: `alembic upgrade head`
+3. Reset schema: `python scripts/reset_db.py`
 4. Check logs for detailed error messages
 
 ## Next Steps
 
 After ingestion:
 
-1. Run the daily pipeline for automation
-2. Export or analyze knowledge graph data from scripts
-3. Add additional session papers and video mappings
+1. Add more videos to mapping file
+2. Run video ingestion script
+3. Query knowledge graph via UI package
+
+For more details, see:
+- `INGESTOR_DESIGN.md` - Complete schema design and ingestion flow
+- `README.md` - Full project documentation
 
 ---
 
 ## Documentation Index
 
-| Document | Description |
-|----------|-------------|
-| [AGENTS.md](../AGENTS.md) | Comprehensive codebase guide with code map |
-| [README.md](../README.md) | Project overview and quick start |
-| [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local setup |
-| [USAGE.md](../USAGE.md) | Usage examples |
-| [scripts/README.md](./README.md) | Data ingestion scripts guide |
+| Document | Description | Audience |
+|----------|-------------|----------|
+| [AGENTS.md](../AGENTS.md) | Codebase guide with code map | AI agents, developers |
+| [README.md](../README.md) | Project overview and quick start | Everyone |
+| [QUICKSTART.md](../QUICKSTART.md) | Step-by-step local setup | New users |
+| [USAGE.md](../USAGE.md) | Usage examples | Users |
+| [scripts/README.md](./README.md) | Data ingestion scripts guide | Users |

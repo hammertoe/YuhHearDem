@@ -1,6 +1,5 @@
 """Transcript segment model for semantic search."""
 
-import datetime
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, Integer, JSON, String, Text

@@ -109,7 +109,7 @@ async def test_ingest_video_creates_session_and_video(db_session):
     ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     result = await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=test123",
+        youtube_url="https://www.youtube.com/watch?v=test1234567",
         chamber="house",
         session_date=date(2026, 1, 6),
         sitting_number="10",
@@ -125,7 +125,7 @@ async def test_ingest_video_creates_session_and_video(db_session):
     assert session.chamber == "house"
     assert session.sitting_number == "10"
 
-    video = await db_session.execute(select(Video).where(Video.video_id == "test123"))
+    video = await db_session.execute(select(Video).where(Video.video_id == "test1234567"))
     video = video.scalar_one()
     assert video is not None
     assert video.session_id == "s_10_2026_01_06"
@@ -168,7 +168,7 @@ async def test_ingest_video_creates_agenda_items(db_session):
     ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=test123",
+        youtube_url="https://www.youtube.com/watch?v=test1234567",
         chamber="house",
         session_date=date(2026, 1, 6),
         sitting_number="10",
@@ -231,22 +231,22 @@ async def test_ingest_video_creates_transcript_segments_with_stable_ids(db_sessi
     ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=test123",
+        youtube_url="https://www.youtube.com/watch?v=test1234567",
         chamber="house",
         session_date=date(2026, 1, 6),
         sitting_number="10",
     )
 
     segments = await db_session.execute(
-        select(TranscriptSegment).where(TranscriptSegment.video_id == "test123")
+        select(TranscriptSegment).where(TranscriptSegment.video_id == "test1234567")
     )
     segments = segments.scalars().all()
 
     assert len(segments) == 2
 
     segment_ids = [s.segment_id for s in segments]
-    assert "test123_00005" in segment_ids
-    assert "test123_00010" in segment_ids
+    assert "test1234567_00005" in segment_ids
+    assert "test1234567_00010" in segment_ids
 
 
 @pytest.mark.asyncio
@@ -327,14 +327,14 @@ async def test_ingest_video_creates_relationship_evidence(db_session):
     ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=test123",
+        youtube_url="https://www.youtube.com/watch?v=test1234567",
         chamber="house",
         session_date=date(2026, 1, 6),
         sitting_number="10",
     )
 
     evidence = await db_session.execute(
-        select(RelationshipEvidence).where(RelationshipEvidence.video_id == "test123")
+        select(RelationshipEvidence).where(RelationshipEvidence.video_id == "test1234567")
     )
     evidence = evidence.scalars().all()
 
@@ -354,10 +354,10 @@ async def test_ingest_video_creates_relationship_evidence(db_session):
 async def test_ingest_video_skips_existing_video(db_session):
     """Ingesting should skip videos that already exist."""
     video = Video(
-        video_id="test123",
+        video_id="test1234567",
         session_id="s_10_2026_01_06",
         platform="youtube",
-        url="https://www.youtube.com/watch?v=test123",
+        url="https://www.youtube.com/watch?v=test1234567",
         duration_seconds=None,
     )
     session = SessionModel(
@@ -393,7 +393,7 @@ async def test_ingest_video_skips_existing_video(db_session):
     ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     result = await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=test123",
+        youtube_url="https://www.youtube.com/watch?v=test1234567",
         chamber="house",
         session_date=date(2026, 1, 6),
         sitting_number="10",

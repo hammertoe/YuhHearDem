@@ -23,20 +23,15 @@ cp .env.example .env
 # Start PostgreSQL
 docker-compose up -d
 
-# Run migrations
-alembic upgrade head
+# Initialize schema
+python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
 ```
 
 ## Step 2: Get Data
 
 ### Option A: Manual (Recommended for getting started)
 
-1. **Download order papers:**
-   - Go to: https://www.barbadosparliament.com/order_papers/search
-   - Click "House of Assembly" or "The Senate"
-   - Download PDFs to `data/papers/`
-
-2. **Get YouTube video URLs:**
+1. **Get YouTube video URLs:**
    - Go to Barbados Parliament YouTube channel
    - Copy video URLs (these will be processed directly by Gemini - no download needed)
 
@@ -47,33 +42,15 @@ mkdir -p data/papers
 ### Option B: Automated
 
 ```bash
-# Scrape and download papers
+# Scrape session papers (optional, for context only)
 python scripts/scrape_session_papers.py --download
-
-# The scraper finds papers and downloads PDFs to data/papers/
 ```
 
-**Note:** The scraper may need adjustments based on website structure. Manual download is often faster and more reliable.
+**Note:** The scraper may need adjustments based on website structure. For now, video ingestion is primary focus.
 
 ## Step 3: Ingest Data
 
-Once you have PDFs and video URLs:
-
-### Ingest Order Papers
-
-```bash
-# Ingest a single PDF
-python scripts/ingest_order_paper.py data/papers/session_paper.pdf
-
-# Or ingest all PDFs from directory
-python scripts/ingest_order_paper.py data/papers/
-```
-
-This will:
-- Parse PDF with Gemini Vision API
-- Extract speakers and agenda items
-- Save to database
-- Create speaker records
+Once you have video URLs:
 
 ### Ingest Videos
 
@@ -84,7 +61,7 @@ First, create a mapping file `data/video_mapping.json`:
         "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
         "chamber": "house",
         "session_date": "2024-01-15",
-        "order_paper_pdf": "data/papers/session_paper.pdf"
+        "session_id": "s_10_2024_01_15"
     }
 ]
 ```
@@ -94,14 +71,23 @@ Then ingest (YouTube URL processed directly by Gemini - no download needed):
 python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
-## Step 4: Match and Process Videos
+This will:
+- Create/update Session records with stable IDs (`s_{sitting_number}_{YYYY_MM_DD}`)
+- Create Video records linked to Sessions (`video_id = youtube_id`)
+- Transcribe the video via Gemini API
+- Create AgendaItem records for each agenda topic (`agenda_item_id = {session_id}_a{index}`)
+- Create TranscriptSegment records with stable IDs (`segment_id = {youtube_id}_{start_time_seconds:05d}`)
+- Extract entities and relationships
+- Create RelationshipEvidence rows linking relationships to transcript segments
+
+### Single Video Ingestion
 
 ```bash
-# Match videos to order papers
-python scripts/match_videos_to_papers.py
-
-# Run the daily pipeline (scrape, match, process)
-python scripts/daily_pipeline.py
+python scripts/ingest_video.py \
+  --url "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --chamber house \
+  --session-date "2024-01-15" \
+  --sitting-number "10"
 ```
 
 ## Troubleshooting
@@ -142,29 +128,20 @@ docker-compose logs postgres
 
 ## What Each Step Does
 
-### Order Paper Ingestion
-1. Reads PDF file
-2. Sends to Gemini Vision API
-3. Extracts:
-   - Session title and date
-   - List of all speakers
-   - Agenda items and topics
-4. Saves to `order_papers` table
-5. Creates/updates speaker records
-
 ### Video Ingestion
 1. **Passes YouTube URL directly to Gemini Video API** (no download)
 2. Transcribes with speaker attribution
-3. Extracts entities from transcript
-4. Saves to `videos` table
-5. Links to order papers if provided
+3. Creates Session, Video, AgendaItem, Speaker, TranscriptSegment records
+4. Extracts entities from transcript
+5. Creates Entity, Relationship, RelationshipEvidence records
+6. All IDs are stable and deterministic
 
-### Entity Extraction
-Automatically happens during video transcription:
-1. Identifies people, organizations, legislation
-2. Creates entity records
-3. Finds relationships between entities
-4. Builds knowledge graph
+### ID Formats
+- Session ID: `s_{sitting_number}_{YYYY_MM_DD}` (e.g., `s_10_2026_01_15`)
+- Video ID: YouTube ID (e.g., `abc123xyz`)
+- Segment ID: `{youtube_id}_{start_time_seconds:05d}` (e.g., `abc123xyz_00005`)
+- Agenda Item ID: `{session_id}_a{index}` (e.g., `s_10_2026_01_15_a0`)
+- Speaker ID: `p_{last_name}_{initials}` (e.g., `p_smith_jd`)
 
 ## Next Steps
 

@@ -1,7 +1,6 @@
 sqlalchemy[asyncio]>=2.0.25
 asyncpg>=0.29.0
 pgvector>=0.2.5
-alembic>=1.13.0
 pydantic>=2.5.3
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0

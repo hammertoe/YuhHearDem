@@ -11,10 +11,10 @@ class TestEmbeddingService:
     @patch("sentence_transformers.SentenceTransformer")
     def test_generate_embeddings_mocked(self, mock_transformer):
         """Test embedding generation with mocked transformer."""
+        import numpy as np
+
         mock_model = Mock()
-        mock_result = Mock()
-        mock_result.tolist.return_value = [[0.1, 0.2, 0.3]]
-        mock_model.encode.return_value = mock_result
+        mock_model.encode.return_value = np.array([[0.1, 0.2, 0.3]])
         mock_transformer.return_value = mock_model
 
         service = EmbeddingService()
@@ -40,10 +40,10 @@ class TestEmbeddingService:
     @patch("sentence_transformers.SentenceTransformer")
     def test_generate_batch(self, mock_transformer):
         """Test batch embedding generation."""
+        import numpy as np
+
         mock_model = Mock()
-        mock_result = Mock()
-        mock_result.tolist.return_value = [[0.1, 0.2], [0.3, 0.4]]
-        mock_model.encode.return_value = mock_result
+        mock_model.encode.return_value = np.array([[0.1, 0.2], [0.3, 0.4]])
         mock_transformer.return_value = mock_model
 
         service = EmbeddingService()

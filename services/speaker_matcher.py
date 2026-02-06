@@ -10,14 +10,14 @@ settings = get_settings()
 class SpeakerMatcher:
     """Matches speakers with fuzzy deduplication."""
 
-    def __init__(self, threshold: int = None):
+    def __init__(self, threshold: int | None = None) -> None:
         """
         Initialize matcher.
 
         Args:
             threshold: Fuzzy match threshold 0-100 (default: from config)
         """
-        self.threshold = threshold or settings.fuzzy_match_threshold
+        self.threshold = threshold if threshold is not None else settings.fuzzy_match_threshold
 
     def normalize_name(self, name: str) -> str:
         """

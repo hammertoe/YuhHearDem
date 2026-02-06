@@ -1,15 +1,7 @@
 """Video transcription service using Gemini"""
 
-from datetime import datetime, timezone
-from typing import cast
-
 from parsers.models import OrderPaper
-from parsers.transcript_models import (
-    Sentence,
-    SessionTranscript,
-    SpeechBlock,
-    TranscriptAgendaItem,
-)
+from parsers.transcript_models import SessionTranscript, parse_gemini_transcript_response
 from services.gemini import GeminiClient
 from services.speaker_matcher import SpeakerMatcher
 
@@ -62,7 +54,7 @@ class VideoTranscriptionService:
         "required": ["session_title", "agenda_items"],
     }
 
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, gemini_client: GeminiClient) -> None:
         """Initialize service with Gemini client."""
         self.client = gemini_client
         self.speaker_matcher = SpeakerMatcher()
@@ -144,101 +136,4 @@ TRANSCRIPTION INSTRUCTIONS:
 
     def _parse_response(self, response: dict[str, object]) -> SessionTranscript:
         """Parse Gemini response into SessionTranscript."""
-        # Simplified parsing - in production would handle all cases
-        date_value = response.get("date")
-        parsed_date: datetime = datetime.now(timezone.utc).replace(tzinfo=None)
-        if isinstance(date_value, str):
-            try:
-                parsed_date = datetime.fromisoformat(date_value)
-            except ValueError:
-                parsed_date = datetime.now(timezone.utc).replace(tzinfo=None)
-
-        session_title = response.get("session_title")
-        if not isinstance(session_title, str):
-            session_title = ""
-        session_title = cast(str, session_title)
-
-        chamber = response.get("chamber")
-        if not isinstance(chamber, str):
-            chamber = "house"
-        chamber = cast(str, chamber)
-
-        agenda_items_raw = response.get("agenda_items")
-        if not isinstance(agenda_items_raw, list):
-            agenda_items_raw = []
-        agenda_items_raw = cast(list, agenda_items_raw)
-
-        agenda_items: list[TranscriptAgendaItem] = []
-        for item in agenda_items_raw:
-            if not isinstance(item, dict):
-                continue
-            topic_title = item.get("topic_title")
-            if not isinstance(topic_title, str):
-                continue
-
-            speech_blocks_raw = item.get("speech_blocks")
-            if not isinstance(speech_blocks_raw, list):
-                speech_blocks_raw = []
-            speech_blocks_raw = cast(list, speech_blocks_raw)
-
-            speech_blocks: list[SpeechBlock] = []
-            for block in speech_blocks_raw:
-                if not isinstance(block, dict):
-                    continue
-                speaker_name = block.get("speaker_name")
-                if not isinstance(speaker_name, str):
-                    continue
-                speaker_id = block.get("speaker_id")
-                if not isinstance(speaker_id, str):
-                    speaker_id = None
-
-                sentences_raw = block.get("sentences")
-                if not isinstance(sentences_raw, list):
-                    sentences_raw = []
-                sentences_raw = cast(list, sentences_raw)
-
-                sentences: list[Sentence] = []
-                for sentence in sentences_raw:
-                    if not isinstance(sentence, dict):
-                        continue
-                    start_time = sentence.get("start_time")
-                    text = sentence.get("text")
-                    if not isinstance(start_time, str) or not isinstance(text, str):
-                        continue
-                    sentences.append(Sentence(start_time=start_time, text=text))
-
-                speech_blocks.append(
-                    SpeechBlock(
-                        speaker_name=speaker_name,
-                        speaker_id=speaker_id,
-                        sentences=sentences,
-                    )
-                )
-
-            agenda_items.append(
-                TranscriptAgendaItem(
-                    topic_title=topic_title,
-                    speech_blocks=speech_blocks,
-                    bill_id=item.get("bill_id"),
-                    bill_match_confidence=item.get("bill_match_confidence"),
-                )
-            )
-
-        video_url = response.get("video_url")
-        if not isinstance(video_url, str):
-            video_url = None
-        video_url = cast(str | None, video_url)
-
-        video_title = response.get("video_title")
-        if not isinstance(video_title, str):
-            video_title = None
-        video_title = cast(str | None, video_title)
-
-        return SessionTranscript(
-            session_title=session_title,
-            date=parsed_date,
-            chamber=chamber,
-            agenda_items=agenda_items,
-            video_url=video_url,
-            video_title=video_title,
-        )
+        return parse_gemini_transcript_response(response)

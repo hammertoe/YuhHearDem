@@ -220,8 +220,13 @@ Return the complete transcript in the specified JSON structure."""
             JSON schema dictionary
         """
         schema_path = Path("output-schema.json")
-        with open(schema_path) as f:
-            return json.load(f)
+        if schema_path.exists():
+            with open(schema_path) as f:
+                return json.load(f)
+
+        from services.video_transcription import VideoTranscriptionService
+
+        return VideoTranscriptionService.TRANSCRIPT_SCHEMA
 
     def _normalize_name(self, name: str) -> str:
         """
@@ -357,10 +362,12 @@ Return the complete transcript in the specified JSON structure."""
         # No match found - generate new ID
         new_id = self._generate_canonical_id(speaker_name)
         new_speaker = Speaker(
-            canonical_id=new_id,
+            speaker_id=new_id,
             name=speaker_name,
             title=None,
             role=None,
+            chamber=None,
+            aliases=[],
         )
 
         # IMPORTANT: Add to mapping immediately so subsequent encounters find it.
@@ -418,7 +425,9 @@ Return the complete transcript in the specified JSON structure."""
                     # Track new speakers if list provided
                     if is_new and new_speaker and new_speakers_list is not None:
                         # Avoid duplicates
-                        if not any(s.id == new_speaker.id for s in new_speakers_list):
+                        if not any(
+                            s.speaker_id == new_speaker.speaker_id for s in new_speakers_list
+                        ):
                             new_speakers_list.append(new_speaker)
                     if not speaker_id:
                         unmapped_speakers.add(speaker_name)

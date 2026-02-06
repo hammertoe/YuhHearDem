@@ -1,6 +1,6 @@
 """Order paper data models"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 
@@ -29,5 +29,5 @@ class OrderPaper:
     session_title: str
     session_date: date
     sitting_number: str | None = None
-    speakers: list[OrderPaperSpeaker] = None
-    agenda_items: list[AgendaItem] = None
+    speakers: list[OrderPaperSpeaker] = field(default_factory=list)
+    agenda_items: list[AgendaItem] = field(default_factory=list)

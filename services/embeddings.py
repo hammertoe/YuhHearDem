@@ -6,7 +6,7 @@ from services.gemini import GeminiClient
 class EmbeddingService:
     """Service for generating vector embeddings."""
 
-    def __init__(self, gemini_client: GeminiClient | None = None):
+    def __init__(self, gemini_client: GeminiClient | None = None) -> None:
         """Initialize embedding service.
 
         Args:
@@ -14,7 +14,7 @@ class EmbeddingService:
         """
         self.gemini_client = gemini_client
         if gemini_client:
-            self.model_name = "text-embedding-004"
+            self.model_name = "text-multilingual-embedding"  # v1beta compatible model  # Note: Using v1beta, model names differ
             self.model_version = "gemini"
         else:
             self.model_name = "all-MiniLM-L6-v2"
@@ -42,13 +42,13 @@ class EmbeddingService:
             model_name = "all-MiniLM-L6-v2"
             model = SentenceTransformer(model_name)
 
-            embeddings = model.encode(
+            all_embeddings = model.encode(
                 texts,
-                convert_to_numpy=False,
+                convert_to_numpy=True,
                 show_progress_bar=False,
             )
 
-            return embeddings.tolist()
+            return all_embeddings.tolist()
 
         except ImportError:
             raise ImportError(
@@ -71,11 +71,11 @@ class EmbeddingService:
         Returns:
             List of embedding vectors
         """
-        all_embeddings = []
+        result_embeddings = []
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             batch_embeddings = self.generate_embeddings(batch)
-            all_embeddings.extend(batch_embeddings)
+            result_embeddings.extend(batch_embeddings)
 
-        return all_embeddings
+        return result_embeddings

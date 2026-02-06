@@ -10,7 +10,7 @@ from services.gemini import GeminiClient
 class OrderPaperParser:
     """Parses parliamentary order paper PDFs to extract speakers and agenda."""
 
-    def __init__(self, gemini_client: GeminiClient):
+    def __init__(self, gemini_client: GeminiClient) -> None:
         """
         Initialize parser with Gemini client.
 

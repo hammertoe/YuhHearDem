@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Float, JSON, String, Text, text
+from sqlalchemy import JSON, Float, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -34,6 +34,7 @@ class Entity(Base):
         server_default=text("'unknown'"),
     )
     source_ref: Mapped[str | None] = mapped_column(String(100))
+    meta_data: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         nullable=False,
         server_default="now()",

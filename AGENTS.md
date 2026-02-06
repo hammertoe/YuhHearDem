@@ -25,7 +25,6 @@ YuhHearDem/
 ├── core/               # Shared utilities (config, DB, logging)
 ├── data/               # Raw data files (not in git)
 ├── docs/               # Documentation
-├── migrations/         # Alembic database migrations
 ├── models/             # SQLAlchemy models
 ├── parsers/            # Document parsers
 ├── processed/          # Processed data output

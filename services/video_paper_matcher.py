@@ -10,9 +10,9 @@ Only flags ambiguous cases (multiple papers on same date, missing data) for manu
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,7 @@ class MatchResult:
     confidence_score: int = 0
     is_ambiguous: bool = False
     ambiguity_reason: Optional[str] = None
-    all_candidates: list = None
-
-    def __post_init__(self):
-        if self.all_candidates is None:
-            self.all_candidates = []
+    all_candidates: list[tuple[int, object]] = field(default_factory=list)
 
 
 class TitlePatternMatcher:
@@ -157,7 +153,8 @@ class TitlePatternMatcher:
 class VideoPaperMatcher:
     """Matches YouTube videos to order papers."""
 
-    def __init__(self, db_session=None):
+    def __init__(self, db_session=None) -> None:
+        """Initialize matcher with optional DB session."""
         self.db_session = db_session
         self.pattern_matcher = TitlePatternMatcher()
 
@@ -266,6 +263,9 @@ class VideoPaperMatcher:
 
     def _find_candidates(self, video: VideoMetadata, order_papers: list) -> list:
         """Find order paper candidates by date and chamber."""
+        if not video.extracted_session_date:
+            return []
+
         candidates = []
 
         # Allow ±1 day for timezone/scheduling flexibility
@@ -274,11 +274,7 @@ class VideoPaperMatcher:
 
         for paper in order_papers:
             # Get paper date
-            paper_date = None
-            if hasattr(paper, "session_date"):
-                paper_date = paper.session_date
-            elif isinstance(paper, dict):
-                paper_date = paper.get("session_date")
+            paper_date = self._get_paper_value(paper, "session_date")
 
             if not paper_date:
                 continue
@@ -290,53 +286,48 @@ class VideoPaperMatcher:
             # Check date range
             if date_min <= paper_date <= date_max:
                 # Check chamber
-                paper_chamber = None
-                if hasattr(paper, "chamber"):
-                    paper_chamber = paper.chamber
-                elif isinstance(paper, dict):
-                    paper_chamber = paper.get("chamber")
+                paper_chamber = self._get_paper_value(paper, "chamber")
 
-                if paper_chamber and paper_chamber.lower() == video.extracted_chamber.lower():
+                if (
+                    paper_chamber
+                    and video.extracted_chamber
+                    and paper_chamber.lower() == video.extracted_chamber.lower()
+                ):
                     candidates.append(paper)
 
         return candidates
 
     def _calculate_match_score(self, video: VideoMetadata, paper) -> int:
         """Calculate confidence score for a match."""
+        if not video.extracted_session_date:
+            return 0
+
         score = 0
 
         # Date match (exact = 50, ±1 day = 40)
-        paper_date = None
-        if hasattr(paper, "session_date"):
-            paper_date = paper.session_date
-        elif isinstance(paper, dict):
-            paper_date = paper.get("session_date")
+        paper_date = self._get_paper_value(paper, "session_date")
 
         if isinstance(paper_date, datetime):
             paper_date = paper_date.date()
 
         if paper_date == video.extracted_session_date:
             score += 50
-        elif abs((paper_date - video.extracted_session_date).days) <= 1:
+        elif paper_date and abs((paper_date - video.extracted_session_date).days) <= 1:
             score += 40
 
         # Chamber match = 30
-        paper_chamber = None
-        if hasattr(paper, "chamber"):
-            paper_chamber = paper.chamber
-        elif isinstance(paper, dict):
-            paper_chamber = paper.get("chamber")
+        paper_chamber = self._get_paper_value(paper, "chamber")
 
-        if paper_chamber and paper_chamber.lower() == video.extracted_chamber.lower():
+        if (
+            paper_chamber
+            and video.extracted_chamber
+            and paper_chamber.lower() == video.extracted_chamber.lower()
+        ):
             score += 30
 
         # Sitting number match = 20
         if video.extracted_sitting:
-            paper_sitting = None
-            if hasattr(paper, "sitting_number"):
-                paper_sitting = paper.sitting_number
-            elif isinstance(paper, dict):
-                paper_sitting = paper.get("sitting_number")
+            paper_sitting = self._get_paper_value(paper, "sitting_number")
 
             if paper_sitting:
                 # Normalize: remove non-digits and compare
@@ -360,21 +351,13 @@ class VideoPaperMatcher:
         senate_count = 0
 
         for paper in order_papers:
-            paper_date = None
-            if hasattr(paper, "session_date"):
-                paper_date = paper.session_date
-            elif isinstance(paper, dict):
-                paper_date = paper.get("session_date")
+            paper_date = self._get_paper_value(paper, "session_date")
 
             if isinstance(paper_date, datetime):
                 paper_date = paper_date.date()
 
             if paper_date and date_min <= paper_date <= date_max:
-                paper_chamber = None
-                if hasattr(paper, "chamber"):
-                    paper_chamber = paper.chamber
-                elif isinstance(paper, dict):
-                    paper_chamber = paper.get("chamber")
+                paper_chamber = self._get_paper_value(paper, "chamber")
 
                 if paper_chamber:
                     if paper_chamber.lower() == "house":
@@ -389,6 +372,11 @@ class VideoPaperMatcher:
             return "senate"
 
         return None
+
+    def _get_paper_value(self, paper: object, key: str) -> Any:
+        if isinstance(paper, dict):
+            return paper.get(key)
+        return getattr(paper, key, None)
 
 
 def normalize_sitting_number(sitting: Optional[str]) -> Optional[str]:

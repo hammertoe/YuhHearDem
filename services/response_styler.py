@@ -1,7 +1,6 @@
 """Response styling service for YuhHearDem chat system."""
 
 import random
-from typing import Any
 
 
 class ResponseStyler:
@@ -44,7 +43,7 @@ class ResponseStyler:
         "What are the next steps for this issue?",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize response styler."""
         pass
 
@@ -122,7 +121,7 @@ class ResponseStyler:
 
     def _format_latest_session(self, data: dict) -> list[str]:
         """Format latest session results with quotes."""
-        parts = []
+        parts: list[str] = []
 
         title = data.get("title", "Recent session")
         date = data.get("session_date", "")
@@ -151,14 +150,14 @@ class ResponseStyler:
 
         if quotes:
             parts.append("\n**What they said:**")
-            for i, quote in enumerate(quotes[:3], 1):
+            for _i, quote in enumerate(quotes[:3], 1):
                 parts.append(f'\n> "{quote}"')
 
         return parts
 
     def _format_search_results(self, data: dict) -> list[str]:
         """Format session search results."""
-        parts = []
+        parts: list[str] = []
         sessions = data.get("sessions", [])
 
         if not sessions:
@@ -206,7 +205,7 @@ class ResponseStyler:
 
     def _format_semantic_results(self, data: dict) -> list[str]:
         """Format semantic search results with quotes."""
-        parts = []
+        parts: list[str] = []
         results = data.get("results", [])
 
         if not results:
@@ -250,7 +249,7 @@ class ResponseStyler:
 
     def _format_mentions(self, data: dict) -> list[str]:
         """Format entity mention results."""
-        parts = []
+        parts: list[str] = []
         mentions = data.get("mentions", [])
 
         if not mentions:
@@ -314,8 +313,8 @@ class ResponseStyler:
         return parts
 
     def _format_entity(self, data: dict) -> list[str]:
-        """Format entity search results."""
-        parts = []
+        """Format single entity result."""
+        parts: list[str] = []
         entities = data.get("entities", [])
 
         if not entities:
@@ -338,7 +337,7 @@ class ResponseStyler:
 
     def _format_relationships(self, data: dict) -> list[str]:
         """Format relationship results."""
-        parts = []
+        parts: list[str] = []
         relationships = data.get("relationships", [])
 
         if not relationships:
@@ -502,7 +501,6 @@ class ResponseStyler:
         for mention in mentions[:3]:
             context = mention.get("context", "")
             speaker = mention.get("speaker", "")
-            video_title = mention.get("video_title", "")
 
             if context and len(context.split()) > 2:
                 words = context.split()[:3]

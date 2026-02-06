@@ -57,7 +57,7 @@ jobs:
           DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
+          pytest tests/ -v --cov=core --cov=models --cov=parsers --cov=services --cov=scripts --cov-report=xml --cov-report=term
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

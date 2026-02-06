@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 import uuid
@@ -12,15 +13,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.config import get_settings
-from core.database import get_db
+from core.database import get_session_maker
 from models.agenda_item import AgendaItem
 from models.entity import Entity
 from models.relationship import Relationship
@@ -29,12 +31,7 @@ from models.session import Session as SessionModel
 from models.speaker import Speaker
 from models.transcript_segment import TranscriptSegment
 from models.video import Video
-from parsers.transcript_models import (
-    Sentence,
-    SessionTranscript,
-    SpeechBlock,
-    TranscriptAgendaItem,
-)
+from parsers.transcript_models import SessionTranscript, parse_gemini_transcript_response
 from services.embeddings import EmbeddingService
 from services.entity_extractor import EntityExtractor, ExtractedRelationship, ExtractionResult
 from services.gemini import GeminiClient
@@ -59,7 +56,9 @@ class VideoIngestor:
         self.client = gemini_client
         self.transcription_service = VideoTranscriptionService(gemini_client)
         self.entity_extractor = entity_extractor
-        self.embedding_service = embedding_service or EmbeddingService(gemini_client=gemini_client)
+        self.embedding_service = embedding_service or EmbeddingService(
+            gemini_client=None
+        )  # Use local sentence-transformers for embeddings
         self.stage_timings_ms: dict[str, float] = {}
 
     async def ingest_video(
@@ -72,7 +71,7 @@ class VideoIngestor:
         fps: float | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         Transcribe and save a video with knowledge graph extraction.
 
@@ -90,108 +89,202 @@ class VideoIngestor:
         overall_start = time.perf_counter()
         youtube_id = self._extract_youtube_id(youtube_url)
 
-        logger.info(f"Ingesting video: {youtube_id}")
+        logger.info("Ingesting video: %s", youtube_id)
 
-        existing = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
-        video = existing.scalar_one_or_none()
-        if video:
-            logger.info(f"Video already exists: {youtube_id}")
+        if await self._video_exists(youtube_id):
+            logger.info("Video already exists: %s", youtube_id)
             return {"status": "skipped", "reason": "already_exists"}
 
         try:
-            if not session_id:
-                session_id = self._generate_session_id(chamber, session_date, sitting_number)
-                logger.info(f"Generated session_id: {session_id}")
-
-            effective_fps = fps if fps is not None else 0.25
-
-            transcript_start = time.perf_counter()
-            prompt = """Transcribe this Barbados parliamentary session.
-
-        STRUCTURE:
-        1. Group by agenda items naturally
-        2. For each speech block:
-           - speaker_name: Name as spoken
-           - sentences: List of sentences with timestamps
-        3. Timestamp format: XmYsZms (e.g., 0m5s250ms)
-
-        INSTRUCTIONS:
-        - Preserve parliamentary language and formal tone
-        - Identify speaker changes clearly
-        - Include all content"""
-
-            response = self.client.analyze_video_with_transcript(
-                video_url=youtube_url,
-                prompt=prompt,
-                response_schema=VideoTranscriptionService.TRANSCRIPT_SCHEMA,
-                fps=effective_fps,
-                start_time=start_time,
-                end_time=end_time,
+            session_id = await self._ensure_session_id(chamber, session_date, sitting_number, session_id)
+            transcript = await self._transcribe_video(
+                youtube_url,
+                fps,
+                start_time,
+                end_time,
             )
-
-            transcript = self.transcription_service._parse_response(response)
-            self.stage_timings_ms["transcription"] = (time.perf_counter() - transcript_start) * 1000
-
-            if not transcript:
-                logger.warning("Empty transcript received")
-                return {"status": "error", "error": "empty_transcript"}
-
-            extraction = None
-            entities_count = 0
-            if self.entity_extractor:
-                extract_start = time.perf_counter()
-                extraction = self.entity_extractor.extract_from_transcript(transcript)
-                entities_count = len(extraction.entities)
-                self.stage_timings_ms["kg_extraction"] = (
-                    time.perf_counter() - extract_start
-                ) * 1000
-            else:
-                extraction = ExtractionResult(
-                    session_id=session_id,
-                    entities=[],
-                    relationships=[],
-                )
-
-            await self._persist_session_and_video(
+            extraction, entities_count = self._extract_knowledge_graph(transcript, session_id)
+            video = await self._persist_all_data(
                 youtube_url,
                 youtube_id,
                 session_id,
                 chamber,
                 session_date,
                 sitting_number,
+                transcript,
+                extraction,
             )
-
-            video = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
-            video = video.scalar_one()
-
-            await self._persist_speakers(transcript)
-            await self._persist_agenda_items(session_id, transcript)
-            segment_id_lookup = await self._persist_transcript_segments(
-                video, youtube_id, session_id, transcript
-            )
-
-            if extraction.entities or extraction.relationships:
-                await self._persist_knowledge_graph(
-                    video, session_id, youtube_id, transcript, extraction, segment_id_lookup
-                )
-
-            await self.db.commit()
-            await self.db.refresh(video)
 
             self.stage_timings_ms["total"] = (time.perf_counter() - overall_start) * 1000
             self._log_run_summary(youtube_id)
 
-            return {
-                "status": "success",
-                "video_id": video.video_id,
-                "session_id": session_id,
-                "entities_count": entities_count,
-            }
+            return self._build_success_result(video.video_id, session_id, entities_count)
 
-        except Exception as e:
-            logger.error(f"Failed to ingest video: {e}", exc_info=True)
+        except (
+            ValueError,
+            KeyError,
+            json.JSONDecodeError,
+            AttributeError,
+            IndexError,
+            TypeError,
+        ) as e:
+            logger.error("Failed to ingest video: %s", e, exc_info=True)
             await self.db.rollback()
             return {"status": "error", "error": str(e)}
+
+    async def _video_exists(self, youtube_id: str) -> bool:
+        """Check if a video already exists in the database."""
+        existing = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
+        return existing.scalar_one_or_none() is not None
+
+    async def _ensure_session_id(
+        self,
+        chamber: str,
+        session_date: date | None,
+        sitting_number: str | None,
+        session_id: str | None,
+    ) -> str:
+        """Find existing session or generate new session ID."""
+        if session_id:
+            return session_id
+
+        # Try to find existing session by date and chamber
+        if session_date:
+            existing_session = await self._find_existing_session(chamber, session_date)
+            if existing_session:
+                logger.info("Found existing session: %s", existing_session)
+                return existing_session
+
+        # Generate new session ID if no existing session found
+        generated = self._generate_session_id(chamber, session_date, sitting_number)
+        logger.info("Generated new session_id: %s", generated)
+        return generated
+
+    async def _find_existing_session(self, chamber: str, session_date: date) -> str | None:
+        """Find an existing session by chamber and date."""
+        from sqlalchemy import select
+        result = await self.db.execute(
+            select(SessionModel).where(
+                SessionModel.chamber == chamber,
+                SessionModel.date == session_date
+            )
+        )
+        session = result.scalar_one_or_none()
+        return session.session_id if session else None
+
+    async def _transcribe_video(
+        self,
+        youtube_url: str,
+        fps: float | None,
+        start_time: int | None,
+        end_time: int | None,
+    ) -> SessionTranscript:
+        """Transcribe a YouTube video into a structured transcript."""
+        effective_fps = fps if fps is not None else 0.25
+
+        transcript_start = time.perf_counter()
+        prompt = """Transcribe this Barbados parliamentary session.
+
+STRUCTURE:
+1. Group by agenda items naturally
+2. For each speech block:
+   - speaker_name: Name as spoken
+   - sentences: List of sentences with timestamps
+3. Timestamp format: XmYsZms (e.g., 0m5s250ms)
+
+INSTRUCTIONS:
+- Preserve parliamentary language and formal tone
+- Identify speaker changes clearly
+- Include all content"""
+
+        response = self.client.analyze_video_with_transcript(
+            video_url=youtube_url,
+            prompt=prompt,
+            response_schema=VideoTranscriptionService.TRANSCRIPT_SCHEMA,
+            fps=effective_fps,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        transcript = self.transcription_service._parse_response(response)
+        self.stage_timings_ms["transcription"] = (time.perf_counter() - transcript_start) * 1000
+
+        if not transcript:
+            raise ValueError("empty_transcript")
+
+        return transcript
+
+    def _extract_knowledge_graph(
+        self,
+        transcript: SessionTranscript,
+        session_id: str,
+    ) -> tuple[ExtractionResult, int]:
+        """Extract entities and relationships from transcript."""
+        if not self.entity_extractor:
+            return ExtractionResult(session_id=session_id, entities=[], relationships=[]), 0
+
+        extract_start = time.perf_counter()
+        extraction = self.entity_extractor.extract_from_transcript(transcript)
+        self.stage_timings_ms["kg_extraction"] = (time.perf_counter() - extract_start) * 1000
+        return extraction, len(extraction.entities)
+
+    async def _persist_all_data(
+        self,
+        youtube_url: str,
+        youtube_id: str,
+        session_id: str,
+        chamber: str,
+        session_date: date | None,
+        sitting_number: str | None,
+        transcript: SessionTranscript,
+        extraction: ExtractionResult,
+    ) -> Video:
+        """Persist session, video, transcript, and knowledge graph data."""
+        await self._persist_session_and_video(
+            youtube_url,
+            youtube_id,
+            session_id,
+            chamber,
+            session_date,
+            sitting_number,
+        )
+
+        video = await self._fetch_video(youtube_id)
+
+        await self._persist_speakers(transcript)
+        await self._persist_agenda_items(session_id, transcript)
+        segment_id_lookup = await self._persist_transcript_segments(
+            video, youtube_id, session_id, transcript
+        )
+
+        if extraction.entities or extraction.relationships:
+            await self._persist_knowledge_graph(
+                video, session_id, youtube_id, transcript, extraction, segment_id_lookup
+            )
+
+        await self.db.commit()
+        await self.db.refresh(video)
+
+        return video
+
+    async def _fetch_video(self, youtube_id: str) -> Video:
+        """Fetch a persisted video or raise if missing."""
+        result = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
+        try:
+            return result.scalar_one()
+        except NoResultFound as exc:
+            raise ValueError(f"Video {youtube_id} not found after persistence") from exc
+
+    def _build_success_result(
+        self, video_id: str, session_id: str, entities_count: int
+    ) -> dict[str, object]:
+        """Build response payload for successful ingestion."""
+        return {
+            "status": "success",
+            "video_id": video_id,
+            "session_id": session_id,
+            "entities_count": entities_count,
+        }
 
     async def _persist_session_and_video(
         self,
@@ -388,11 +481,18 @@ class VideoIngestor:
 
             segment_ids = self._find_segments_for_relationship(transcript, rel, segment_id_lookup)
 
+            if not segment_ids:
+                continue
+
+            result = await self.db.execute(
+                select(TranscriptSegment).where(TranscriptSegment.segment_id.in_(segment_ids))
+            )
+            segments_by_id = {segment.segment_id: segment for segment in result.scalars().all()}
+
             for segment_id in segment_ids:
-                segment = await self.db.execute(
-                    select(TranscriptSegment).where(TranscriptSegment.segment_id == segment_id)
-                )
-                segment = segment.scalar_one()
+                segment = segments_by_id.get(segment_id)
+                if not segment:
+                    continue
                 self.db.add(
                     RelationshipEvidence(
                         evidence_id=uuid.uuid4(),
@@ -456,48 +556,7 @@ class VideoIngestor:
         return list(segment_ids)
 
     def _parse_simple_response(self, response: dict[str, Any]) -> SessionTranscript:
-        session_title = response.get("session_title", "")
-        chamber = response.get("chamber", "house")
-        date_value = response.get("date")
-        if isinstance(date_value, str):
-            session_date = datetime.fromisoformat(date_value)
-        elif isinstance(date_value, datetime):
-            session_date = date_value
-        else:
-            session_date = datetime.now(timezone.utc).replace(tzinfo=None)
-
-        agenda_items = []
-        for agenda in response.get("agenda_items", []):
-            speech_blocks = []
-            for block in agenda.get("speech_blocks", []):
-                sentences = [
-                    Sentence(start_time=sentence["start_time"], text=sentence["text"])
-                    for sentence in block.get("sentences", [])
-                ]
-                speech_blocks.append(
-                    SpeechBlock(
-                        speaker_name=block.get("speaker_name", ""),
-                        speaker_id=block.get("speaker_id"),
-                        sentences=sentences,
-                    )
-                )
-            agenda_items.append(
-                TranscriptAgendaItem(
-                    topic_title=agenda.get("topic_title", ""),
-                    speech_blocks=speech_blocks,
-                    bill_id=agenda.get("bill_id"),
-                )
-            )
-
-        return SessionTranscript(
-            session_title=session_title,
-            date=session_date,
-            chamber=chamber,
-            agenda_items=agenda_items,
-            video_url=response.get("video_url"),
-            video_title=response.get("video_title"),
-            video_upload_date=response.get("video_upload_date"),
-        )
+        return parse_gemini_transcript_response(response)
 
     def _generate_session_id(
         self, chamber: str, session_date: date | None, sitting_number: str | None
@@ -510,7 +569,10 @@ class VideoIngestor:
         except (ValueError, AttributeError):
             sitting_num = 0
 
-        date_str = session_date.strftime("%Y_%m_%d") if session_date else "unknown"
+        if session_date is None:
+            session_date = datetime.now(timezone.utc).date()
+
+        date_str = session_date.strftime("%Y_%m_%d")
         return f"s_{sitting_num}_{date_str}"
 
     def _generate_speaker_id(self, name: str) -> str:
@@ -522,8 +584,6 @@ class VideoIngestor:
         return f"p_{name.lower().replace(' ', '_')}"
 
     def _parse_timecode(self, time_str: str) -> int:
-        import re
-
         match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
         if not match:
             return 0
@@ -531,13 +591,19 @@ class VideoIngestor:
         return minutes * 60 + seconds
 
     def _extract_youtube_id(self, url: str) -> str:
-        pattern = r"(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)"
-        import re
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(f"Invalid YouTube URL scheme: {url}")
 
+        pattern = r"(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)"
         match = re.search(pattern, url)
         if not match:
             raise ValueError(f"Invalid YouTube URL: {url}")
-        return match.group(1)
+
+        youtube_id = match.group(1)
+        if not re.match(r"^[a-zA-Z0-9_-]{11}$", youtube_id):
+            raise ValueError(f"Invalid YouTube ID format: {youtube_id}")
+
+        return youtube_id
 
     def _log_run_summary(self, youtube_id: str) -> None:
         logger.info("Timing summary for %s (ms): %s", youtube_id, self.stage_timings_ms)
@@ -546,7 +612,7 @@ class VideoIngestor:
         self,
         mapping_file: Path,
         fps: float | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, object]]:
         with open(mapping_file) as f:
             videos = json.load(f)
 
@@ -577,7 +643,7 @@ class VideoIngestor:
         return results
 
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest videos to database")
     parser.add_argument("--url", help="YouTube URL to ingest")
     parser.add_argument("--mapping", type=Path, help="JSON file with video metadata")
@@ -642,8 +708,16 @@ async def main():
 
 @asynccontextmanager
 async def _db_session() -> AsyncIterator[AsyncSession]:
-    async for session in get_db():
-        yield session
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 if __name__ == "__main__":

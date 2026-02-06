@@ -4,23 +4,16 @@
 import argparse
 import asyncio
 import logging
-import sys
-from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from google import genai
 
 load_dotenv()
 
-from core.config import get_settings
 from scripts.ingest_order_paper import OrderPaperIngestor
 from scripts.scrape_session_papers import SessionPaperScraper
 from services.gemini import GeminiClient
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +33,7 @@ class FullIngestionPipeline:
 
     async def run_full_pipeline(
         self,
-        max_papers: int = None,
+        max_papers: int | None = None,
     ):
         """
         Run the complete ingestion pipeline.
@@ -52,57 +45,54 @@ class FullIngestionPipeline:
         logger.info("Starting Full Ingestion Pipeline")
         logger.info("=" * 60)
 
-        settings = get_settings()
-
         from core.database import get_session_maker
 
         session_maker = get_session_maker()
 
-        async with session_maker() as db:
-            client = GeminiClient()
+        client = GeminiClient()
 
-            # Step 1: Scrape session papers
-            logger.info("\n[Step 1] Scraping session papers...")
-            scraper = SessionPaperScraper()
-            papers = scraper.scrape_session_papers(self.chamber, max_papers)
+        # Step 1: Scrape session papers
+        logger.info("\n[Step 1] Scraping session papers...")
+        scraper = SessionPaperScraper()
+        papers = scraper.scrape_session_papers(self.chamber, max_papers)
 
-            logger.info(f"Found {len(papers)} session papers")
+        logger.info(f"Found {len(papers)} session papers")
 
-            # Step 2: Download PDFs
-            logger.info("\n[Step 2] Downloading PDFs...")
-            downloaded = scraper.download_all_papers(papers, self.papers_dir)
-            logger.info(f"Downloaded {len(downloaded)} PDFs")
+        # Step 2: Download PDFs
+        logger.info("\n[Step 2] Downloading PDFs...")
+        downloaded = scraper.download_all_papers(papers, self.papers_dir)
+        logger.info(f"Downloaded {len(downloaded)} PDFs")
 
-            # Step 3: Ingest order papers to database
-            logger.info("\n[Step 3] Ingesting order papers...")
-            ingestor = OrderPaperIngestor(gemini_client=client)
+        # Step 3: Ingest order papers to database
+        logger.info("\n[Step 3] Ingesting order papers...")
+        ingestor = OrderPaperIngestor(gemini_client=client)
 
-            paper_results = []
-            for paper in downloaded:
-                result = await ingestor.ingest_pdf(
-                    db_session_maker=session_maker,
-                    pdf_path=Path(paper["pdf_path"]),
-                    chamber=self.chamber,
-                )
-                paper_results.append(result)
+        paper_results = []
+        for paper in downloaded:
+            result = await ingestor.ingest_pdf(
+                db_session_maker=session_maker,
+                pdf_path=Path(paper["pdf_path"]),
+                chamber=self.chamber,
+            )
+            paper_results.append(result)
 
-            success = sum(1 for r in paper_results if r["status"] == "success")
-            logger.info(f"Ingested {success}/{len(downloaded)} order papers")
+        success = sum(1 for r in paper_results if r["status"] == "success")
+        logger.info(f"Ingested {success}/{len(downloaded)} order papers")
 
-            logger.info("\n" + "=" * 60)
-            logger.info("Pipeline Complete!")
-            logger.info("=" * 60)
-            logger.info("\nTo process videos, use the daily pipeline:")
-            logger.info("  python scripts/daily_pipeline.py")
+        logger.info("\n" + "=" * 60)
+        logger.info("Pipeline Complete!")
+        logger.info("=" * 60)
+        logger.info("\nTo process videos, use the daily pipeline:")
+        logger.info("  python scripts/daily_pipeline.py")
 
-            return {
-                "papers_scraped": len(papers),
-                "papers_downloaded": len(downloaded),
-                "papers_ingested": success,
-            }
+        return {
+            "papers_scraped": len(papers),
+            "papers_downloaded": len(downloaded),
+            "papers_ingested": success,
+        }
 
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Full parliamentary data ingestion pipeline")
     parser.add_argument(
         "--chamber",

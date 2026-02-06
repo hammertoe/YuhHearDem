@@ -2,13 +2,16 @@
 
 import asyncio
 import os
+from urllib.parse import urlparse
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Default test database URL (PostgreSQL with pgvector)
-DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/yuhheardem_test"
+DEFAULT_TEST_DATABASE_URL = (
+    "postgresql+asyncpg://postgres:YHD_9f3b7c2d5a8e1f6g@localhost:5432/yuhheardem_test"
+)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -134,12 +137,20 @@ def verify_postgres():
     import asyncpg
 
     async def _check():
+        database_url = os.environ.get("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
+        parsed = urlparse(database_url)
+        user = parsed.username or "postgres"
+        password = parsed.password or ""
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 5432
+        database = parsed.path.lstrip("/") or "postgres"
+
         conn = await asyncpg.connect(
-            user="postgres",
-            password="postgres",
-            database="postgres",
-            host="localhost",
-            port=5432,
+            user=user,
+            password=password,
+            database=database,
+            host=host,
+            port=port,
         )
         await conn.execute("SELECT 1")
         await conn.close()

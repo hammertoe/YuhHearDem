@@ -17,7 +17,7 @@ YuhHearDem uses advanced NLP techniques to:
 - **Ingestion**: Python 3.13 scripts (async)
 - **Database**: PostgreSQL 16 with pgvector extension
 - **NLP**: spaCy, sentence-transformers
-- **Search**: Vector similarity search with fuzzy matching
+- **Video Processing**: YouTube URLs processed directly by Gemini API (no downloads)
 
 Note: The web UI and API have been moved to a separate package. This repository focuses on scraping and ingestion tooling.
 
@@ -35,8 +35,8 @@ cp .env.example .env
 # 2. Start database
 docker-compose up -d
 
-# 3. Run migrations
-alembic upgrade head
+# 3. Initialize schema
+python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
 
 # 4. Ingest data
 # Option A: Full pipeline (automatic)
@@ -67,8 +67,8 @@ python -m spacy download en_core_web_sm
 cp .env.example .env
 # Edit .env with your configuration
 
-# Run migrations
-alembic upgrade head
+# Initialize schema
+python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
 
 # Ingest videos (YouTube URLs processed directly by Gemini)
 python scripts/ingest_video.py --mapping data/video_mapping.json
@@ -78,17 +78,19 @@ python scripts/ingest_video.py --mapping data/video_mapping.json
 
 ```
 YuhHearDem/
-├── core/               # Shared utilities
-├── data/               # Raw data files
+├── core/               # Shared utilities (config, DB, logging)
+├── data/               # Raw data files (not in git)
 ├── docs/               # Documentation
-├── migrations/         # Database migrations
-├── models/             # SQLAlchemy models
+├── models/             # SQLAlchemy models (new schema)
 ├── parsers/            # Document parsers
-├── processed/          # Processed data
+├── processed/          # Processed data output
 ├── scripts/            # Scraping + ingestion tools
-├── services/           # Business logic
-├── storage/            # Persistent storage
+├── services/           # Business logic services
 ├── tests/              # Test suite
+├── .env.example        # Environment template
+├── README.md           # Project overview and quick start
+├── QUICKSTART.md       # Step-by-step local setup
+├── USAGE.md            # Usage examples
 └── requirements.txt     # Python dependencies
 ```
 
@@ -123,20 +125,13 @@ mypy core/ models/ parsers/ services/ scripts/
 pre-commit run --all-files
 ```
 
-### Database Migrations
+### Database Schema
+
+Schema is created directly from SQLAlchemy models.
 
 ```bash
-# Create a new migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
-
-# View migration history
-alembic history
+# Initialize schema on a fresh database
+python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
 ```
 
 

@@ -1,32 +1,22 @@
 """Session model"""
 
-from datetime import datetime, timezone
-from uuid import uuid4
+import datetime
+from datetime import date as dt_date
 
-from sqlalchemy import JSON, Boolean, DateTime, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Date, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
 
 class Session(Base):
-    """User chat session"""
+    """Parliamentary session"""
 
     __tablename__ = "sessions"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    session_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        index=True,
-    )
-    last_updated: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    )
-    archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    meta_data: Mapped[dict] = mapped_column(JSON, default=lambda: {})
+    session_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    date: Mapped[dt_date] = mapped_column(Date, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    sitting_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    chamber: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(nullable=False, server_default="now()")
