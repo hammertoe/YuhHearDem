@@ -206,9 +206,12 @@ class VideoIngestor:
         self, youtube_url: str
     ) -> tuple[date | None, str | None, str | None, str | None]:
         """Extract session date, chamber, title, sitting number from video metadata using LLM."""
-        ydl_opts: dict[str, bool] = {
+        ydl_opts = {
             "quiet": True,
             "no_warnings": True,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "no_check_certificates": True,
+            "extract_flat": "in_search",
         }
 
         try:
