@@ -1,18 +1,15 @@
 """Database connection and session management"""
 
 from collections.abc import AsyncGenerator
-from typing import Optional
 
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
 from core.config import get_settings
 
 Base = declarative_base()
+
+import models
 
 _engine = None
 _async_session_maker = None
@@ -24,7 +21,6 @@ def get_engine():
     if _engine is None:
         settings = get_settings()
 
-        # SQLite doesn't support pool_size and max_overflow
         engine_kwargs = {
             "echo": settings.debug,
         }
@@ -69,6 +65,14 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
 
+async def reset_db() -> None:
+    """Drop and recreate all tables"""
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+
 async def close_db() -> None:
     """Close database connections"""
     global _engine, _async_session_maker
@@ -79,7 +83,7 @@ async def close_db() -> None:
 
 
 def reset_engine():
-    """Reset engine for testing"""
+    """Reset cached engine/session maker"""
     global _engine, _async_session_maker
     _engine = None
     _async_session_maker = None

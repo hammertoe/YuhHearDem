@@ -4,7 +4,6 @@ from dataclasses import dataclass, field, is_dataclass
 from typing import Any
 
 from models.entity import Entity
-from models.relationship import Relationship
 from parsers.transcript_models import SessionTranscript
 from services.gemini import GeminiClient
 
@@ -173,7 +172,22 @@ class ExtractionResult:
 
     session_id: str
     entities: list[Entity] = field(default_factory=list)
-    relationships: list[Relationship] = field(default_factory=list)
+    relationships: list["ExtractedRelationship"] = field(default_factory=list)
+
+
+@dataclass
+class ExtractedRelationship:
+    """Relationship extracted from transcript analysis."""
+
+    source_id: str
+    target_id: str
+    relation_type: str
+    evidence: str
+    sentiment: str | None = None
+    confidence: float | None = None
+    source: str = "llm"
+    source_ref: str | None = None
+    timestamp_seconds: int | None = None
 
 
 class EntityExtractor:
@@ -389,7 +403,7 @@ class EntityExtractor:
 
     def _extract_relationships_pass2(
         self, transcript: SessionTranscript, entities: list[Entity], session_id: str
-    ) -> list[Relationship]:
+    ) -> list[ExtractedRelationship]:
         """
         Pass 2: Extract all relationships using complete entity list from Pass 1.
 
@@ -574,7 +588,7 @@ IMPORTANT:
 
     def _parse_relationships(
         self, rel_dicts: list[dict], transcript: SessionTranscript, session_id: str
-    ) -> list[Relationship]:
+    ) -> list[ExtractedRelationship]:
         """
         Parse relationship dictionaries into Relationship objects.
 
@@ -586,13 +600,13 @@ IMPORTANT:
         Returns:
             List of Relationship objects
         """
-        relationships = []
+        relationships: list[ExtractedRelationship] = []
 
         for rel_dict in rel_dicts:
             # Find timestamp from evidence quote
             timestamp = self._find_evidence_timestamp(rel_dict["evidence"], transcript)
 
-            relationship = Relationship(
+            relationship = ExtractedRelationship(
                 source_id=rel_dict["source_id"],
                 target_id=rel_dict["target_id"],
                 relation_type=rel_dict["relation_type"],
@@ -685,7 +699,6 @@ IMPORTANT:
                     entity_confidence=1.0,
                     source="derived",
                     source_ref=f"{transcript.chamber}-{transcript.date.isoformat()}",
-                    speaker_canonical_id=speaker_id,
                 )
             )
         return speaker_entities

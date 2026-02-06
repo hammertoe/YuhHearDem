@@ -1,19 +1,19 @@
-"""Video ingestion tests."""
+"""Video ingestion tests for new schema"""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, cast
 from unittest.mock import Mock
-
 import pytest
 from sqlalchemy import select
 
 from models.entity import Entity
-from models.mention import Mention
 from models.relationship import Relationship
+from models.relationship_evidence import RelationshipEvidence
 from models.speaker import Speaker
 from models.transcript_segment import TranscriptSegment
-from models.video import Video as VideoModel
-from parsers.models import AgendaItem, OrderPaper, OrderPaperSpeaker
+from models.video import Video
+from models.session import Session as SessionModel
+from models.agenda_item import AgendaItem
 from parsers.transcript_models import (
     Sentence,
     SessionTranscript,
@@ -21,9 +21,8 @@ from parsers.transcript_models import (
     TranscriptAgendaItem,
 )
 from scripts.ingest_video import VideoIngestor
-from services.entity_extractor import ExtractionResult
+from services.entity_extractor import ExtractionResult, ExtractedRelationship
 from services.gemini import GeminiClient
-from services.video_transcription import VideoTranscriptionService
 
 
 class StubTranscriptionService:
@@ -32,16 +31,7 @@ class StubTranscriptionService:
     def __init__(self, transcript: SessionTranscript):
         self._transcript = transcript
 
-    def transcribe(
-        self,
-        video_url: str,
-        order_paper: OrderPaper,
-        speaker_id_mapping: dict,
-        fps: float | None = None,
-        start_time: int | None = None,
-        end_time: int | None = None,
-        **kwargs,
-    ):
+    def _parse_response(self, response):
         return self._transcript
 
 
@@ -58,7 +48,7 @@ class StubEntityExtractor:
 class StubEmbeddingService:
     """Stub embedding service for tests."""
 
-    def __init__(self, dimensions: int = 768) -> None:
+    def __init__(self, dimensions: int = 384) -> None:
         self.dimensions = dimensions
         self.calls = []
         self.model_name = "test-model"
@@ -70,298 +60,344 @@ class StubEmbeddingService:
 
 
 @pytest.mark.asyncio
-async def test_ingest_video_updates_existing_without_transcript(db_session):
-    """Existing videos without transcripts should be updated."""
-    video = VideoModel(
-        youtube_id="abc123",
-        youtube_url="https://www.youtube.com/watch?v=abc123",
-        title="Placeholder",
-        chamber="house",
-        session_date=datetime.now(timezone.utc).replace(tzinfo=None),
-        transcript={},
-    )
-    db_session.add(video)
-    await db_session.commit()
-
-    order_paper = OrderPaper(
-        session_title="Test Session",
-        session_date=datetime.now(timezone.utc).date(),
-        speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
-        agenda_items=[AgendaItem(topic_title="Intro")],
-    )
+async def test_ingest_video_creates_session_and_video(db_session):
+    """Ingesting a video should create Session and Video records with stable IDs."""
     transcript = SessionTranscript(
         session_title="Test Session",
         date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
-        agenda_items=[],
+        agenda_items=[
+            TranscriptAgendaItem(
+                topic_title="Agenda 1",
+                bill_id="bill1",
+                speech_blocks=[
+                    SpeechBlock(
+                        speaker_name="Hon. John Smith",
+                        speaker_id="hon_john_smith",
+                        sentences=[Sentence(start_time="0m5s0ms", text="Good morning.")],
+                    )
+                ],
+            )
+        ],
     )
 
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, Mock()))
+    extraction = ExtractionResult(
+        session_id="s_10_2026_01_06",
+        entities=[
+            Entity(
+                entity_id="hon_john_smith",
+                name="John Smith",
+                canonical_name="John Smith",
+                entity_type="person",
+                entity_subtype="speaker",
+                description="Speaker",
+                aliases=[],
+                importance_score=1.0,
+                source="test",
+                source_ref="s_10_2026_01_06",
+            )
+        ],
+        relationships=[],
+    )
+
+    ingestor = VideoIngestor(
+        db_session,
+        gemini_client=Mock(spec=GeminiClient),
+    )
     ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
+    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
+    ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     result = await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=abc123",
-        order_paper=order_paper,
+        youtube_url="https://www.youtube.com/watch?v=test123",
+        chamber="house",
+        session_date=date(2026, 1, 6),
+        sitting_number="10",
     )
 
     assert result["status"] == "success"
 
+    session = await db_session.execute(
+        select(SessionModel).where(SessionModel.session_id == "s_10_2026_01_06")
+    )
+    session = session.scalar_one()
+    assert session is not None
+    assert session.chamber == "house"
+    assert session.sitting_number == "10"
+
+    video = await db_session.execute(select(Video).where(Video.video_id == "test123"))
+    video = video.scalar_one()
+    assert video is not None
+    assert video.session_id == "s_10_2026_01_06"
+    assert video.platform == "youtube"
+
 
 @pytest.mark.asyncio
-async def test_ingest_video_saves_transcript_dict(db_session):
-    """Transcripts are persisted as dictionaries."""
-    video = VideoModel(
-        youtube_id="def456",
-        youtube_url="https://www.youtube.com/watch?v=def456",
-        title="Placeholder",
-        chamber="house",
-        session_date=datetime.now(timezone.utc).replace(tzinfo=None),
-        transcript={},
-    )
-    db_session.add(video)
-    await db_session.commit()
-
-    order_paper = OrderPaper(
-        session_title="Stored Session",
-        session_date=datetime.now(timezone.utc).date(),
-        speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
-        agenda_items=[AgendaItem(topic_title="Intro")],
-    )
+async def test_ingest_video_creates_agenda_items(db_session):
+    """Ingesting should create agenda items with stable IDs."""
     transcript = SessionTranscript(
-        session_title="Stored Session",
-        date=datetime.now(timezone.utc).replace(tzinfo=None),
-        chamber="house",
-        agenda_items=[],
-    )
-
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, Mock()))
-    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
-
-    await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=def456",
-        order_paper=order_paper,
-    )
-
-    await db_session.refresh(video)
-
-    assert video.transcript["session_title"] == "Stored Session"
-
-
-@pytest.mark.asyncio
-async def test_ingest_video_without_order_paper_uses_schema(db_session):
-    """Transcription requests should include response schema."""
-    mock_client = Mock()
-    mock_client.analyze_video_with_transcript = Mock(
-        return_value={
-            "title": "No Order Paper Session",
-            "video_url": "https://example.com",
-            "video_title": "Example",
-        }
-    )
-
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, mock_client))
-
-    await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=xyz789",
-        chamber="house",
-    )
-
-    _, kwargs = mock_client.analyze_video_with_transcript.call_args
-
-    assert kwargs["response_schema"] == VideoTranscriptionService.TRANSCRIPT_SCHEMA
-
-
-@pytest.mark.asyncio
-async def test_ingest_video_persists_speaker_entities(db_session):
-    """Speaker entities should be stored in the knowledge graph."""
-    order_paper = OrderPaper(
-        session_title="Speaker Session",
-        session_date=datetime.now(timezone.utc).date(),
-        speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
-        agenda_items=[AgendaItem(topic_title="Intro")],
-    )
-    transcript = SessionTranscript(
-        session_title="Speaker Session",
-        date=datetime.now(timezone.utc).replace(tzinfo=None),
-        chamber="house",
-        agenda_items=[],
-    )
-
-    speaker_entity = Entity(
-        entity_id="speaker-123",
-        entity_type="person",
-        name="Hon. Jane Doe",
-        canonical_name="Hon. Jane Doe",
-        aliases=[],
-        description="Parliamentary speaker",
-        importance_score=1.0,
-    )
-    extraction = ExtractionResult(
-        session_id="house-2024-01-01",
-        entities=[speaker_entity],
-        relationships=[],
-    )
-
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, Mock()))
-    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
-    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
-    ingestor.embedding_service = cast(Any, StubEmbeddingService(dimensions=768))
-
-    await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=speaker123",
-        order_paper=order_paper,
-    )
-
-    result = await db_session.execute(select(Entity).where(Entity.entity_id == "speaker-123"))
-    entity = result.scalar_one_or_none()
-
-    assert entity is not None
-
-
-@pytest.mark.asyncio
-async def test_ingest_video_creates_mentions_and_agenda_edges(db_session):
-    """Ingest should create mentions and agenda-based relationships."""
-    db_session.add(
-        Speaker(
-            canonical_id="jane-doe",
-            name="Hon. Jane Doe",
-            title="Hon.",
-            role="Minister of Transport",
-            aliases=[],
-            meta_data={},
-        )
-    )
-    await db_session.commit()
-
-    order_paper = OrderPaper(
-        session_title="KG Session",
-        session_date=datetime.now(timezone.utc).date(),
-        speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
-        agenda_items=[AgendaItem(topic_title="Road Traffic Bill")],
-    )
-    transcript = SessionTranscript(
-        session_title="KG Session",
+        session_title="Test Session",
         date=datetime.now(timezone.utc).replace(tzinfo=None),
         chamber="house",
         agenda_items=[
             TranscriptAgendaItem(
-                topic_title="Road Traffic Bill",
-                speech_blocks=[
-                    SpeechBlock(
-                        speaker_name="Hon. Jane Doe",
-                        speaker_id="jane-doe",
-                        sentences=[
-                            Sentence(
-                                start_time="0m0s0ms",
-                                text="The Road Traffic Act, Cap. 295 will be amended.",
-                            )
-                        ],
-                    )
-                ],
-            )
-        ],
-    )
-
-    extracted_entity = Entity(
-        entity_id="road-traffic-act-cap-295",
-        entity_type="law",
-        name="Road Traffic Act, Cap. 295",
-        canonical_name="Road Traffic Act, Chapter 295",
-        aliases=["the Act"],
-        description="Primary traffic legislation",
-        importance_score=0.7,
-    )
-    extraction = ExtractionResult(
-        session_id="house-2024-01-01",
-        entities=[extracted_entity],
-        relationships=[],
-    )
-
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, Mock()))
-    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
-    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
-    ingestor.embedding_service = cast(Any, StubEmbeddingService(dimensions=768))
-
-    await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=kg123",
-        order_paper=order_paper,
-    )
-
-    mention_result = await db_session.execute(
-        select(Mention).where(Mention.entity_id == "road-traffic-act-cap-295")
-    )
-    mention = mention_result.scalar_one_or_none()
-
-    assert mention is not None
-    assert mention.agenda_item_index == 0
-    assert mention.speech_block_index == 0
-    assert mention.sentence_index == 0
-    assert mention.speaker_id == "jane-doe"
-
-    agenda_result = await db_session.execute(
-        select(Entity).where(Entity.entity_type == "agenda_item")
-    )
-    agenda_entity = agenda_result.scalar_one_or_none()
-
-    assert agenda_entity is not None
-    assert agenda_entity.name == "Road Traffic Bill"
-
-    relationship_result = await db_session.execute(
-        select(Relationship).where(Relationship.relation_type.in_(["speaks_on", "about"]))
-    )
-    relationships = relationship_result.scalars().all()
-
-    assert len(relationships) == 2
-
-
-@pytest.mark.asyncio
-async def test_ingest_video_persists_transcript_segments(db_session):
-    """Transcript segments should be stored with embeddings."""
-    order_paper = OrderPaper(
-        session_title="Segment Session",
-        session_date=datetime.now(timezone.utc).date(),
-        speakers=[OrderPaperSpeaker(name="Hon. Jane Doe")],
-        agenda_items=[AgendaItem(topic_title="Segment Topic")],
-    )
-    transcript = SessionTranscript(
-        session_title="Segment Session",
-        date=datetime.now(timezone.utc).replace(tzinfo=None),
-        chamber="house",
-        agenda_items=[
+                topic_title="First Agenda Item",
+                bill_id="bill1",
+                speech_blocks=[],
+            ),
             TranscriptAgendaItem(
-                topic_title="Segment Topic",
-                speech_blocks=[
-                    SpeechBlock(
-                        speaker_name="Hon. Jane Doe",
-                        speaker_id="jane-doe",
-                        sentences=[
-                            Sentence(start_time="0m0s0ms", text="Sentence one."),
-                            Sentence(start_time="0m5s0ms", text="Sentence two."),
-                        ],
-                    )
-                ],
-            )
+                topic_title="Second Agenda Item",
+                bill_id="bill2",
+                speech_blocks=[],
+            ),
         ],
     )
 
     extraction = ExtractionResult(
-        session_id="house-2024-01-01",
+        session_id="s_10_2026_01_06",
         entities=[],
         relationships=[],
     )
 
-    ingestor = VideoIngestor(db_session, gemini_client=cast(GeminiClient, Mock()))
+    ingestor = VideoIngestor(
+        db_session,
+        gemini_client=Mock(spec=GeminiClient),
+    )
     ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
     ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
-    ingestor.embedding_service = cast(Any, StubEmbeddingService(dimensions=768))
+    ingestor.embedding_service = cast(Any, StubEmbeddingService())
 
     await ingestor.ingest_video(
-        youtube_url="https://www.youtube.com/watch?v=segment123",
-        order_paper=order_paper,
+        youtube_url="https://www.youtube.com/watch?v=test123",
+        chamber="house",
+        session_date=date(2026, 1, 6),
+        sitting_number="10",
     )
 
-    result = await db_session.execute(select(TranscriptSegment))
-    segments = result.scalars().all()
+    agenda1 = await db_session.execute(
+        select(AgendaItem).where(AgendaItem.agenda_item_id == "s_10_2026_01_06_a0")
+    )
+    agenda1 = agenda1.scalar_one()
+    assert agenda1 is not None
+    assert agenda1.title == "First Agenda Item"
+    assert agenda1.agenda_index == 0
 
-    assert len(segments) == 1
-    assert segments[0].embedding is not None
+    agenda2 = await db_session.execute(
+        select(AgendaItem).where(AgendaItem.agenda_item_id == "s_10_2026_01_06_a1")
+    )
+    agenda2 = agenda2.scalar_one()
+    assert agenda2 is not None
+    assert agenda2.title == "Second Agenda Item"
+    assert agenda2.agenda_index == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_video_creates_transcript_segments_with_stable_ids(db_session):
+    """Ingesting should create transcript segments with format {youtube_id}_{start:05d}."""
+    transcript = SessionTranscript(
+        session_title="Test Session",
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
+        chamber="house",
+        agenda_items=[
+            TranscriptAgendaItem(
+                topic_title="First Agenda",
+                bill_id="bill1",
+                speech_blocks=[
+                    SpeechBlock(
+                        speaker_name="Hon. Speaker",
+                        speaker_id="p_speaker",
+                        sentences=[
+                            Sentence(start_time="0m5s0ms", text="First sentence."),
+                            Sentence(start_time="0m10s0ms", text="Second sentence."),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    extraction = ExtractionResult(
+        session_id="s_10_2026_01_06",
+        entities=[],
+        relationships=[],
+    )
+
+    ingestor = VideoIngestor(
+        db_session,
+        gemini_client=Mock(spec=GeminiClient),
+    )
+    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
+    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
+    ingestor.embedding_service = cast(Any, StubEmbeddingService())
+
+    await ingestor.ingest_video(
+        youtube_url="https://www.youtube.com/watch?v=test123",
+        chamber="house",
+        session_date=date(2026, 1, 6),
+        sitting_number="10",
+    )
+
+    segments = await db_session.execute(
+        select(TranscriptSegment).where(TranscriptSegment.video_id == "test123")
+    )
+    segments = segments.scalars().all()
+
+    assert len(segments) == 2
+
+    segment_ids = [s.segment_id for s in segments]
+    assert "test123_00005" in segment_ids
+    assert "test123_00010" in segment_ids
+
+
+@pytest.mark.asyncio
+async def test_ingest_video_creates_relationship_evidence(db_session):
+    """Ingesting with relationships should create RelationshipEvidence rows."""
+    transcript = SessionTranscript(
+        session_title="Test Session",
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
+        chamber="house",
+        agenda_items=[
+            TranscriptAgendaItem(
+                topic_title="First Agenda",
+                bill_id="bill1",
+                speech_blocks=[
+                    SpeechBlock(
+                        speaker_name="Hon. Speaker",
+                        speaker_id="p_speaker",
+                        sentences=[
+                            Sentence(start_time="0m5s0ms", text="The bill amends the act."),
+                            Sentence(
+                                start_time="0m10s0ms",
+                                text="This is important legislation.",
+                            ),
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    extraction = ExtractionResult(
+        session_id="s_10_2026_01_06",
+        entities=[
+            Entity(
+                entity_id="bill1",
+                name="Bill 1",
+                canonical_name="Bill 1",
+                entity_type="legislation",
+                entity_subtype="bill",
+                description="Test bill",
+                aliases=[],
+                importance_score=0.5,
+                source="test",
+                source_ref="s_10_2026_01_06",
+            ),
+            Entity(
+                entity_id="act1",
+                name="Act 1",
+                canonical_name="Act 1",
+                entity_type="legislation",
+                entity_subtype="act",
+                description="Test act",
+                aliases=[],
+                importance_score=0.5,
+                source="test",
+                source_ref="s_10_2026_01_06",
+            ),
+        ],
+        relationships=[
+            ExtractedRelationship(
+                source_id="bill1",
+                target_id="act1",
+                relation_type="amends",
+                evidence="The bill amends the act.",
+                confidence=0.9,
+                source="test",
+                source_ref="s_10_2026_01_06",
+            ),
+        ],
+    )
+
+    ingestor = VideoIngestor(
+        db_session,
+        gemini_client=Mock(spec=GeminiClient),
+    )
+    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
+    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
+    ingestor.embedding_service = cast(Any, StubEmbeddingService())
+
+    await ingestor.ingest_video(
+        youtube_url="https://www.youtube.com/watch?v=test123",
+        chamber="house",
+        session_date=date(2026, 1, 6),
+        sitting_number="10",
+    )
+
+    evidence = await db_session.execute(
+        select(RelationshipEvidence).where(RelationshipEvidence.video_id == "test123")
+    )
+    evidence = evidence.scalars().all()
+
+    assert len(evidence) > 0
+
+    relationship = await db_session.execute(
+        select(Relationship).where(Relationship.source_entity_id == "bill1")
+    )
+    relationship = relationship.scalar_one()
+    assert relationship is not None
+    assert relationship.source_entity_id == "bill1"
+    assert relationship.target_entity_id == "act1"
+    assert relationship.relation == "amends"
+
+
+@pytest.mark.asyncio
+async def test_ingest_video_skips_existing_video(db_session):
+    """Ingesting should skip videos that already exist."""
+    video = Video(
+        video_id="test123",
+        session_id="s_10_2026_01_06",
+        platform="youtube",
+        url="https://www.youtube.com/watch?v=test123",
+        duration_seconds=None,
+    )
+    session = SessionModel(
+        session_id="s_10_2026_01_06",
+        date=datetime(2026, 1, 6).date(),
+        title="House Session",
+        sitting_number="10",
+        chamber="house",
+    )
+    db_session.add(session)
+    db_session.add(video)
+    await db_session.commit()
+
+    transcript = SessionTranscript(
+        session_title="Test Session",
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
+        chamber="house",
+        agenda_items=[],
+    )
+
+    extraction = ExtractionResult(
+        session_id="s_10_2026_01_06",
+        entities=[],
+        relationships=[],
+    )
+
+    ingestor = VideoIngestor(
+        db_session,
+        gemini_client=Mock(spec=GeminiClient),
+    )
+    ingestor.transcription_service = cast(Any, StubTranscriptionService(transcript))
+    ingestor.entity_extractor = cast(Any, StubEntityExtractor(extraction))
+    ingestor.embedding_service = cast(Any, StubEmbeddingService())
+
+    result = await ingestor.ingest_video(
+        youtube_url="https://www.youtube.com/watch?v=test123",
+        chamber="house",
+        session_date=date(2026, 1, 6),
+        sitting_number="10",
+    )
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "already_exists"

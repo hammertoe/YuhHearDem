@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import factory
 
+from models.agenda_item import AgendaItem
 from models.entity import Entity
-from models.message import Message
 from models.session import Session
 from models.speaker import Speaker
 from models.video import Video
@@ -18,21 +18,27 @@ class VideoFactory(factory.Factory):
     class Meta:
         model = Video
 
-    id = factory.LazyFunction(uuid4)
-    youtube_id = factory.Sequence(lambda n: f"test_video_{n}")
-    youtube_url = factory.LazyAttribute(lambda o: f"https://youtube.com/watch?v={o.youtube_id}")
-    title = factory.Faker("sentence")
-    chamber = factory.Iterator(["senate", "house"])
-    session_date = factory.LazyFunction(lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    sitting_number = factory.Faker("random_int", min=1, max=100)
+    id = factory.Sequence(lambda n: str(n))
+    video_id = factory.Sequence(lambda n: f"test_video_{n:03d}")
+    session_id = factory.SubFactory(SessionFactory)
+    platform = "youtube"
+    url = factory.LazyAttribute(lambda o: f"https://youtube.com/watch?v={o.video_id}")
     duration_seconds = factory.Faker("random_int", min=1800, max=10800)
-    transcript = factory.LazyAttribute(
-        lambda o: {
-            "session_title": o.title,
-            "agenda_items": [],
-            "speech_blocks": [],
-        }
-    )
+
+
+class AgendaItemFactory(factory.Factory):
+    """Factory for creating AgendaItem models"""
+
+    class Meta:
+        model = AgendaItem
+
+    id = factory.Sequence(lambda n: str(n))
+    agenda_item_id = factory.Sequence(lambda n: f"s_000_0000_00_00_a{n:03d}")
+    session_id = factory.SubFactory(SessionFactory)
+    agenda_index = factory.Sequence(lambda n: n)
+    title = factory.Faker("sentence")
+    description = factory.Faker("paragraph")
+    primary_speaker = factory.Faker("name")
 
 
 class SpeakerFactory(factory.Factory):
@@ -65,6 +71,8 @@ class EntityFactory(factory.Factory):
     canonical_name = factory.LazyAttribute(lambda o: o.name.title())
     aliases = factory.LazyFunction(list)
     importance_score = factory.Faker("pyfloat", min_value=0.0, max_value=1.0)
+    source = "test"
+    source_ref = "factory"
 
 
 class SessionFactory(factory.Factory):
@@ -74,19 +82,8 @@ class SessionFactory(factory.Factory):
         model = Session
 
     id = factory.LazyFunction(uuid4)
-    session_id = factory.Sequence(lambda n: f"session_{n}")
-    user_id = factory.LazyFunction(uuid4)
-    archived = False
-
-
-class MessageFactory(factory.Factory):
-    """Factory for creating Message models"""
-
-    class Meta:
-        model = Message
-
-    id = factory.LazyFunction(uuid4)
-    session_id = factory.SubFactory(SessionFactory)
-    role = factory.Iterator(["user", "assistant"])
-    content = factory.Faker("paragraph")
-    structured_response = None
+    session_id = factory.Sequence(lambda n: f"s_{n:03d}_{2026_01_06}")
+    date = factory.LazyFunction(lambda: datetime.now(timezone.utc).date())
+    title = factory.Faker("sentence")
+    sitting_number = factory.Sequence(lambda n: str(n))
+    chamber = factory.Iterator(["senate", "house"])

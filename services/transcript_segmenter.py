@@ -26,8 +26,8 @@ class TranscriptSegmenter:
     def __init__(
         self,
         max_chars: int = 800,
-        max_sentences: int = 4,
-        min_sentences: int = 2,
+        max_sentences: int = 1,
+        min_sentences: int = 1,
     ) -> None:
         self.max_chars = max_chars
         self.max_sentences = max_sentences
