@@ -1,13 +1,17 @@
 """Transcript segment model for semantic search."""
 
 from datetime import datetime, timezone
-from uuid import UUID, uuid4
+import uuid as _uuid
 
 from sqlalchemy import ForeignKey, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
 from core.database import Base
+
+
+UUID = _uuid.UUID
 
 try:
     from pgvector.sqlalchemy import Vector
@@ -34,14 +38,7 @@ class TranscriptSegment(Base):
 
     __tablename__ = "transcript_segments"
 
-    id: Mapped[UUID] = mapped_column(lambda: uuid4(), primary_key=True)
-    segment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
-    session_id: Mapped[str] = mapped_column(
-        String(100),
-        ForeignKey("sessions.session_id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    id: Mapped[pg_UUID] = mapped_column(primary_key=True)
     video_id: Mapped[str] = mapped_column(
         String(20),
         ForeignKey("videos.video_id", ondelete="CASCADE"),
@@ -63,8 +60,4 @@ class TranscriptSegment(Base):
     embedding_model: Mapped[str | None] = mapped_column(String(80))
     embedding_version: Mapped[str | None] = mapped_column(String(40))
     meta_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=lambda: {})
-    created_at: Mapped[datetime] = mapped_column(
-        nullable=False,
-        server_default="now()",
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    )
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
