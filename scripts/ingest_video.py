@@ -208,31 +208,38 @@ class VideoIngestor:
         self, youtube_url: str
     ) -> tuple[date | None, str | None, str | None, str | None]:
         """Extract session date, chamber, title, sitting number from video metadata using LLM."""
-        video_id = self._extract_video_id(youtube_url)
-        if not video_id:
-            return None, None, None, None
+        ydl_opts: dict[str, bool] = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": False,
+            "skip_download": True,
+        }
 
         try:
-            title, description, upload_date = self._get_video_info_from_page(video_id)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                title = info.get("title", "")
+                description = info.get("description", "") or ""
+                upload_date = info.get("upload_date", "")
 
-            logger.info("Video title: %s", title)
-            logger.info("Upload date: %s", upload_date)
+                logger.info("Video title: %s", title)
+                logger.info("Upload date: %s", upload_date)
 
-            metadata = self._extract_metadata_with_llm(title, description, upload_date)
+                metadata = self._extract_metadata_with_llm(title, description, upload_date)
 
-            if metadata.session_date:
-                logger.info("Extracted session_date: %s", metadata.session_date)
-            if metadata.chamber:
-                logger.info("Extracted chamber: %s", metadata.chamber)
-            if metadata.title:
-                logger.info("Extracted title: %s", metadata.title)
+                if metadata.session_date:
+                    logger.info("Extracted session_date: %s", metadata.session_date)
+                if metadata.chamber:
+                    logger.info("Extracted chamber: %s", metadata.chamber)
+                if metadata.title:
+                    logger.info("Extracted title: %s", metadata.title)
 
-            return (
-                metadata.session_date,
-                metadata.chamber,
-                metadata.title,
-                metadata.sitting_number,
-            )
+                return (
+                    metadata.session_date,
+                    metadata.chamber,
+                    metadata.title,
+                    metadata.sitting_number,
+                )
 
         except Exception as e:
             logger.warning("Failed to extract video metadata: %s", e)
