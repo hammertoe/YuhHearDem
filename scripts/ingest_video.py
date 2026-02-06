@@ -11,9 +11,11 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
+import yt_dlp
+from pydantic import BaseModel, Field
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import NoResultFound
@@ -37,6 +39,18 @@ from services.entity_extractor import EntityExtractor, ExtractedRelationship, Ex
 from services.gemini import GeminiClient
 from services.transcript_segmenter import TranscriptSegmentData, TranscriptSegmenter
 from services.video_transcription import VideoTranscriptionService
+
+
+class VideoMetadata(BaseModel):
+    """Extracted video metadata from LLM."""
+
+    session_date: date | None = Field(
+        None, description="Session date in YYYY-MM-DD format if found"
+    )
+    chamber: str | None = Field(None, description="Chamber: 'house' or 'senate' if identifiable")
+    title: str | None = Field(None, description="Session title if found")
+    sitting_number: str | None = Field(None, description="Sitting number if found")
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -97,9 +111,18 @@ class VideoIngestor:
 
         try:
             if not session_date:
-                session_date = await self._auto_detect_session_date(chamber)
-                if session_date:
-                    logger.info("Auto-determined session_date from order paper: %s", session_date)
+                detected_date, detected_chamber, detected_title, detected_sitting = (
+                    self._auto_detect_session_date(youtube_url)
+                )
+                if detected_date:
+                    session_date = detected_date
+                    logger.info("Auto-determined session_date: %s", session_date)
+                if not chamber and detected_chamber:
+                    chamber = detected_chamber
+                    logger.info("Auto-determined chamber: %s", chamber)
+                if detected_sitting and not sitting_number:
+                    sitting_number = detected_sitting
+                    logger.info("Auto-determined sitting_number: %s", sitting_number)
 
             session_id = await self._ensure_session_id(
                 chamber, session_date, sitting_number, session_id
@@ -179,18 +202,80 @@ class VideoIngestor:
         session = result.scalar_one_or_none()
         return session.session_id if session else None
 
-    async def _auto_detect_session_date(self, chamber: str) -> date | None:
-        """Find the most recent order paper (session) by chamber and return its date."""
-        from sqlalchemy import select
+    def _auto_detect_session_date(
+        self, youtube_url: str
+    ) -> tuple[date | None, str | None, str | None, str | None]:
+        """Extract session date, chamber, title, sitting number from video metadata using LLM."""
+        ydl_opts: dict[str, bool] = {
+            "quiet": True,
+            "no_warnings": True,
+        }
 
-        result = await self.db.execute(
-            select(SessionModel)
-            .where(SessionModel.chamber == chamber)
-            .order_by(SessionModel.date.desc())
-            .limit(1)
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                title = info.get("title", "")
+                description = info.get("description", "") or ""
+                upload_date = info.get("upload_date", "")
+
+                logger.info("Video title: %s", title)
+                logger.info("Upload date: %s", upload_date)
+
+                metadata = self._extract_metadata_with_llm(title, description, upload_date)
+
+                if metadata.session_date:
+                    logger.info("Extracted session_date: %s", metadata.session_date)
+                if metadata.chamber:
+                    logger.info("Extracted chamber: %s", metadata.chamber)
+                if metadata.title:
+                    logger.info("Extracted title: %s", metadata.title)
+
+                return (
+                    metadata.session_date,
+                    metadata.chamber,
+                    metadata.title,
+                    metadata.sitting_number,
+                )
+
+        except Exception as e:
+            logger.warning("Failed to extract video metadata: %s", e)
+
+        return None, None, None, None
+
+    def _extract_metadata_with_llm(
+        self,
+        title: str | None,
+        description: str,
+        upload_date: str,
+    ) -> VideoMetadata:
+        """Use LLM to extract session metadata from video metadata."""
+        if not description:
+            description = "N/A"
+        if not title:
+            title = "Unknown"
+
+        prompt = f"""Extract parliamentary session information from this YouTube video metadata.
+
+Video Title: {title}
+Upload Date: {upload_date}
+Description: {description[:2000]}
+
+Extract the following information:
+- session_date: The session date in YYYY-MM-DD format (look for dates in title, description)
+- chamber: "house" or "senate" (look for keywords like "House of Assembly", "Senate")
+- title: A brief title for the session
+- sitting_number: The sitting number if mentioned (e.g., "10th", "Sitting 10")
+
+Return null for any field that cannot be confidently determined."""
+
+        response_schema = VideoMetadata.model_json_schema()
+        response_data = self.client.generate_structured(
+            prompt=prompt,
+            response_schema=response_schema,
+            stage="metadata_extraction",
         )
-        session = result.scalar_one_or_none()
-        return session.date if session else None
+
+        return VideoMetadata(**response_data)
 
     async def _transcribe_video(
         self,

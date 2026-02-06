@@ -1,46 +1,66 @@
-"""Tests for auto-detecting session date from order paper."""
+"""Tests for auto-detecting session metadata from video."""
 
-from datetime import date
+from unittest.mock import MagicMock, patch
 
 from scripts.ingest_video import VideoIngestor
-from models.session import Session as SessionModel
+from scripts.ingest_video import VideoMetadata
+from datetime import date
 
 
-async def test_auto_detect_session_date_from_most_recent_order_paper(db_session):
-    """Auto-detect session_date from most recent order paper when not provided."""
+def test_auto_detect_session_date_from_video_metadata():
+    """Extract session metadata from YouTube video using LLM."""
 
-    ingestor = VideoIngestor(db_session=db_session, gemini_client=None)
+    ingestor = VideoIngestor(db_session=MagicMock(), gemini_client=MagicMock())
 
-    chamber = "house"
-
-    existing_order_paper_1 = SessionModel(
-        session_id="s_10_2025_12_15",
-        date=date(2025, 12, 15),
-        title=f"{chamber.title()} Parliamentary Session",
-        sitting_number="10",
-        chamber=chamber,
-    )
-    existing_order_paper_2 = SessionModel(
-        session_id="s_11_2026_01_06",
-        date=date(2026, 1, 6),
-        title=f"{chamber.title()} Parliamentary Session",
+    mock_metadata = VideoMetadata(
+        session_date=date(2026, 1, 6),
+        chamber="house",
+        title="House of Assembly - Sitting 11",
         sitting_number="11",
-        chamber=chamber,
     )
-    db_session.add(existing_order_paper_1)
-    db_session.add(existing_order_paper_2)
-    await db_session.commit()
 
-    auto_detected_date = await ingestor._auto_detect_session_date(chamber)
+    with patch.object(ingestor, "_extract_metadata_with_llm", return_value=mock_metadata):
+        with patch("scripts.ingest_video.yt_dlp") as mock_ydl:
+            mock_ydl.YoutubeDL.return_value.__enter__.return_value.extract_info.return_value = {
+                "title": "Test Video",
+                "description": "Test description",
+                "upload_date": "20260106",
+            }
 
-    assert auto_detected_date == date(2026, 1, 6)
+            detected_date, detected_chamber, detected_title, detected_sitting = (
+                ingestor._auto_detect_session_date("https://www.youtube.com/watch?v=test123")
+            )
+
+            assert detected_date == date(2026, 1, 6)
+            assert detected_chamber == "house"
+            assert detected_title == "House of Assembly - Sitting 11"
+            assert detected_sitting == "11"
 
 
-async def test_auto_detect_session_date_returns_none_when_no_order_papers(db_session):
-    """Return None when no order papers exist for chamber."""
+def test_auto_detect_session_date_handles_missing_metadata():
+    """Return None when metadata extraction fails."""
 
-    ingestor = VideoIngestor(db_session=db_session, gemini_client=None)
+    ingestor = VideoIngestor(db_session=MagicMock(), gemini_client=MagicMock())
 
-    auto_detected_date = await ingestor._auto_detect_session_date("house")
+    with patch.object(
+        ingestor,
+        "_extract_metadata_with_llm",
+        return_value=VideoMetadata(
+            session_date=None, chamber=None, title=None, sitting_number=None
+        ),
+    ):
+        with patch("scripts.ingest_video.yt_dlp") as mock_ydl:
+            mock_ydl.YoutubeDL.return_value.__enter__.return_value.extract_info.return_value = {
+                "title": "Test Video",
+                "description": "",
+                "upload_date": "20260106",
+            }
 
-    assert auto_detected_date is None
+            detected_date, detected_chamber, detected_title, detected_sitting = (
+                ingestor._auto_detect_session_date("https://www.youtube.com/watch?v=test123")
+            )
+
+            assert detected_date is None
+            assert detected_chamber is None
+            assert detected_title is None
+            assert detected_sitting is None
