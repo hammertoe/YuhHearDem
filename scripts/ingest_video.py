@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 import yt_dlp
 from pydantic import BaseModel, Field
+import requests
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import NoResultFound
@@ -206,51 +207,76 @@ class VideoIngestor:
         self, youtube_url: str
     ) -> tuple[date | None, str | None, str | None, str | None]:
         """Extract session date, chamber, title, sitting number from video metadata using LLM."""
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "no_check_certificates": True,
-            "extract_flat": "in_search",
-        }
+        video_id = self._extract_video_id(youtube_url)
+        if not video_id:
+            return None, None, None, None
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-                title = info.get("title", "")
-                description = info.get("description", "") or ""
-                upload_date = info.get("upload_date", "")
+            title, description, upload_date = self._get_video_info_from_api(video_id)
 
-                logger.info("Video title: %s", title)
-                logger.info("Upload date: %s", upload_date)
+            logger.info("Video title: %s", title)
+            logger.info("Upload date: %s", upload_date)
 
-                metadata = self._extract_metadata_with_llm(title, description, upload_date)
+            metadata = self._extract_metadata_with_llm(title, description, upload_date)
 
-                if metadata.session_date:
-                    logger.info("Extracted session_date: %s", metadata.session_date)
-                if metadata.chamber:
-                    logger.info("Extracted chamber: %s", metadata.chamber)
-                if metadata.title:
-                    logger.info("Extracted title: %s", metadata.title)
+            if metadata.session_date:
+                logger.info("Extracted session_date: %s", metadata.session_date)
+            if metadata.chamber:
+                logger.info("Extracted chamber: %s", metadata.chamber)
+            if metadata.title:
+                logger.info("Extracted title: %s", metadata.title)
 
-                return (
-                    metadata.session_date,
-                    metadata.chamber,
-                    metadata.title,
-                    metadata.sitting_number,
-                )
+            return (
+                metadata.session_date,
+                metadata.chamber,
+                metadata.title,
+                metadata.sitting_number,
+            )
 
         except Exception as e:
-            error_msg = str(e)
-            if "Sign in to confirm you're not a bot" in error_msg or "bot" in error_msg.lower():
-                logger.warning(
-                    "YouTube blocked metadata extraction (bot detection). "
-                    "Use --session-date to specify the session date explicitly."
-                )
-            else:
-                logger.warning("Failed to extract video metadata: %s", e)
+            logger.warning("Failed to extract video metadata: %s", e)
 
         return None, None, None, None
+
+    def _extract_video_id(self, youtube_url: str) -> str | None:
+        """Extract video ID from YouTube URL."""
+        patterns = [
+            r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+            r'youtube\.com\/shorts\/([^"&?\/\s]{11})',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, youtube_url)
+            if match:
+                return match.group(1)
+        return None
+
+    def _get_video_info_from_api(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch video metadata using YouTube Data API."""
+        settings = get_settings()
+        api_key = settings.google_api_key
+
+        url = (
+            f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={api_key}"
+        )
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+        items = data.get("items", [])
+        if not items:
+            raise ValueError("Video not found in API response")
+
+        snippet = items[0].get("snippet", {})
+        title = snippet.get("title", "Unknown")
+        description = snippet.get("description", "N/A")
+        upload_date_raw = snippet.get("publishedAt", "")
+
+        upload_date = ""
+        if upload_date_raw:
+            dt = datetime.fromisoformat(upload_date_raw.replace("Z", "+00:00"))
+            upload_date = dt.strftime("%Y%m%d")
+
+        return title, description, upload_date
 
     def _extract_metadata_with_llm(
         self,
