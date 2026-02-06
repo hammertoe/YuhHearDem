@@ -265,13 +265,13 @@ class VideoIngestor:
         description = "N/A"
         upload_date = ""
 
-        match = re.search(r'<meta\s+itemprop="name"\s+content="([^"]+)"', html)
+        match = re.search(r"<title>([^<]+)</title>", html)
         if match:
-            title = unescape(match.group(1))
+            title = unescape(match.group(1)).replace(" - YouTube", "").strip()
 
-        match = re.search(r'<meta\s+itemprop="description"\s+content="([^"]*)"', html)
+        match = re.search(r'"shortDescription"\s*:\s*"([^"]+)"', html)
         if match:
-            description = unescape(match.group(1)) or "N/A"
+            description = unescape(match.group(1))
 
         match = re.search(r'"uploadDate"\s*:\s*"([^"]+)"', html)
         if match:
