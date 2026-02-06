@@ -96,7 +96,14 @@ class VideoIngestor:
             return {"status": "skipped", "reason": "already_exists"}
 
         try:
-            session_id = await self._ensure_session_id(chamber, session_date, sitting_number, session_id)
+            if not session_date:
+                session_date = await self._auto_detect_session_date(chamber)
+                if session_date:
+                    logger.info("Auto-determined session_date from order paper: %s", session_date)
+
+            session_id = await self._ensure_session_id(
+                chamber, session_date, sitting_number, session_id
+            )
             transcript = await self._transcribe_video(
                 youtube_url,
                 fps,
@@ -163,14 +170,27 @@ class VideoIngestor:
     async def _find_existing_session(self, chamber: str, session_date: date) -> str | None:
         """Find an existing session by chamber and date."""
         from sqlalchemy import select
+
         result = await self.db.execute(
             select(SessionModel).where(
-                SessionModel.chamber == chamber,
-                SessionModel.date == session_date
+                SessionModel.chamber == chamber, SessionModel.date == session_date
             )
         )
         session = result.scalar_one_or_none()
         return session.session_id if session else None
+
+    async def _auto_detect_session_date(self, chamber: str) -> date | None:
+        """Find the most recent order paper (session) by chamber and return its date."""
+        from sqlalchemy import select
+
+        result = await self.db.execute(
+            select(SessionModel)
+            .where(SessionModel.chamber == chamber)
+            .order_by(SessionModel.date.desc())
+            .limit(1)
+        )
+        session = result.scalar_one_or_none()
+        return session.date if session else None
 
     async def _transcribe_video(
         self,
