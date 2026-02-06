@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import json
 import logging
+import random
 import re
 import sys
 import time
@@ -208,43 +209,205 @@ class VideoIngestor:
         self, youtube_url: str
     ) -> tuple[date | None, str | None, str | None, str | None]:
         """Extract session date, chamber, title, sitting number from video metadata using LLM."""
-        ydl_opts: dict[str, bool] = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": False,
-            "skip_download": True,
-        }
+        video_id = self._extract_video_id(youtube_url)
+        if not video_id:
+            return None, None, None, None
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-                title = info.get("title", "")
-                description = info.get("description", "") or ""
-                upload_date = info.get("upload_date", "")
+        methods_to_try = [
+            ("Invidious", lambda: self._get_from_invidious(video_id)),
+            ("Piped", lambda: self._get_from_piped(video_id)),
+            ("oEmbed", lambda: self._get_from_oembed(video_id)),
+            ("RSS Feed", lambda: self._get_from_rss(video_id)),
+            ("YouTube Watch Page", lambda: self._get_from_watch_page(video_id)),
+        ]
 
-                logger.info("Video title: %s", title)
-                logger.info("Upload date: %s", upload_date)
+        for method_name, method_func in methods_to_try:
+            try:
+                logger.info("Trying %s method...", method_name)
+                title, description, upload_date = method_func()
 
-                metadata = self._extract_metadata_with_llm(title, description, upload_date)
+                if title and title != "Unknown":
+                    logger.info("✓ %s succeeded! Title: %s", method_name, title)
+                    if upload_date:
+                        logger.info("  Upload date: %s", upload_date)
 
-                if metadata.session_date:
-                    logger.info("Extracted session_date: %s", metadata.session_date)
-                if metadata.chamber:
-                    logger.info("Extracted chamber: %s", metadata.chamber)
-                if metadata.title:
-                    logger.info("Extracted title: %s", metadata.title)
+                    metadata = self._extract_metadata_with_llm(title, description, upload_date)
 
-                return (
-                    metadata.session_date,
-                    metadata.chamber,
-                    metadata.title,
-                    metadata.sitting_number,
-                )
+                    if metadata.session_date:
+                        logger.info("Extracted session_date: %s", metadata.session_date)
+                    if metadata.chamber:
+                        logger.info("Extracted chamber: %s", metadata.chamber)
+                    if metadata.title:
+                        logger.info("Extracted title: %s", metadata.title)
 
-        except Exception as e:
-            logger.warning("Failed to extract video metadata: %s", e)
+                    return (
+                        metadata.session_date,
+                        metadata.chamber,
+                        metadata.title,
+                        metadata.sitting_number,
+                    )
+                else:
+                    logger.warning("✗ %s method failed - no title found", method_name)
 
+            except Exception as e:
+                logger.warning("✗ %s method failed: %s", method_name, str(e)[:100])
+                continue
+
+        logger.warning("All methods failed, falling back to current date")
         return None, None, None, None
+
+    def _get_user_agent(self) -> str:
+        """Get a random user agent to rotate requests."""
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+        ]
+        return random.choice(user_agents)
+
+    def _get_from_invidious(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch metadata from Invidious instance."""
+        invidious_instances = [
+            "https://inv.tux.pizza",
+            "https://invidious.snopyta.org",
+            "https://yewtu.be",
+            "https://invidious.fdn.fr",
+        ]
+
+        for instance in invidious_instances:
+            try:
+                url = f"{instance}/api/v1/videos/{video_id}"
+                headers = {"User-Agent": self._get_user_agent()}
+                response = requests.get(url, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    title = data.get("title", "")
+                    description = data.get("description", "") or "N/A"
+                    upload_date_raw = data.get("uploadDate")
+
+                    upload_date = ""
+                    if upload_date_raw:
+                        dt = datetime.fromisoformat(upload_date_raw.replace("Z", "+00:00"))
+                        upload_date = dt.strftime("%Y%m%d")
+
+                    return title, description, upload_date
+            except Exception:
+                continue
+
+        return "Unknown", "N/A", ""
+
+    def _get_from_piped(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch metadata from Piped instance."""
+        piped_instances = [
+            "https://pipedapi.kavin.rocks",
+            "https://piped-api.garudalinux.org",
+        ]
+
+        for instance in piped_instances:
+            try:
+                url = f"{instance}/videos/{video_id}"
+                headers = {"User-Agent": self._get_user_agent()}
+                response = requests.get(url, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    title = data.get("title", "")
+                    description = data.get("description", "") or "N/A"
+                    upload_date_raw = data.get("uploadedDate")
+
+                    upload_date = ""
+                    if upload_date_raw:
+                        dt = datetime.fromisoformat(upload_date_raw.replace("Z", "+00:00"))
+                        upload_date = dt.strftime("%Y%m%d")
+
+                    return title, description, upload_date
+            except Exception:
+                continue
+
+        return "Unknown", "N/A", ""
+
+    def _get_from_oembed(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch metadata from YouTube oEmbed endpoint."""
+        try:
+            url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            headers = {"User-Agent": self._get_user_agent()}
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                title = data.get("title", "")
+                return title, "N/A", ""
+        except Exception:
+            pass
+        return "Unknown", "N/A", ""
+
+    def _get_from_rss(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch metadata from YouTube RSS feed."""
+        try:
+            url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}"
+            headers = {"User-Agent": self._get_user_agent()}
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                author_url = data.get("author_url", "")
+                if author_url and "/@" in author_url:
+                    channel_id = author_url.split("/@")[-1]
+                    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+                    rss_response = requests.get(
+                        rss_url, headers={"User-Agent": self._get_user_agent()}, timeout=10
+                    )
+                    if rss_response.status_code == 200:
+                        match = re.search(
+                            r"<title><!\[CDATA\[([^\]]+)\]\]></title>", rss_response.text
+                        )
+                        if match:
+                            return match.group(1), "N/A", ""
+        except Exception:
+            pass
+        return "Unknown", "N/A", ""
+
+    def _get_from_watch_page(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch metadata from YouTube watch page with rotated user agents."""
+        url = f"https://www.youtube.com/watch?v={video_id}"
+
+        for attempt in range(3):
+            try:
+                headers = {"User-Agent": self._get_user_agent()}
+                response = requests.get(url, headers=headers, timeout=5)
+                response.raise_for_status()
+                html = response.text
+
+                title = "Unknown"
+                description = "N/A"
+                upload_date = ""
+
+                match = re.search(r"<title>([^<]+)</title>", html)
+                if match:
+                    title = unescape(match.group(1)).replace(" - YouTube", "").strip()
+
+                match = re.search(r'"shortDescription"\s*:\s*"((?:\\"|[^"])*)"', html)
+                if match:
+                    desc_str = match.group(1)
+                    description = unescape(desc_str.replace('\\"', '"')) or "N/A"
+
+                match = re.search(r'"uploadDate"\s*:\s*"([^"]+)"', html)
+                if match:
+                    upload_date = match.group(1)
+                else:
+                    match = re.search(r'"publishDate"\s*:\s*"([^"]+)"', html)
+                    if match:
+                        upload_date = match.group(1)
+
+                if title and title != "Unknown":
+                    return title, description, upload_date
+
+            except Exception:
+                if attempt < 2:
+                    time.sleep(1)
+                    continue
+
+        return "Unknown", "N/A", ""
 
     def _extract_video_id(self, youtube_url: str) -> str | None:
         """Extract video ID from YouTube URL."""
