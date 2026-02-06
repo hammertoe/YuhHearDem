@@ -410,6 +410,7 @@ INSTRUCTIONS:
                 title=f"{chamber.title()} Parliamentary Session",
                 sitting_number=sitting_number or "0",
                 chamber=chamber,
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             self.db.add(session)
 
