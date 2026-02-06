@@ -108,9 +108,17 @@ class VideoIngestor:
 
         logger.info("Ingesting video: %s", youtube_id)
 
-        if await self._video_exists(youtube_id):
+        existing = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
+        if existing.scalar_one_or_none():
             logger.info("Video already exists: %s", youtube_id)
             return {"status": "skipped", "reason": "already_exists"}
+
+        existing_segments = await self.db.execute(
+            select(TranscriptSegment).where(TranscriptSegment.video_id == youtube_id)
+        )
+        if existing_segments.scalar_one_or_none():
+            logger.info("Segments already exist for video: %s", youtube_id)
+            return {"status": "skipped", "reason": "segments_already_exist"}
 
         try:
             if not session_date:
@@ -627,14 +635,16 @@ INSTRUCTIONS:
             )
             self.db.add(session)
 
-        video = Video(
-            video_id=youtube_id,
-            session_id=session_id,
-            platform="youtube",
-            url=youtube_url,
-            duration_seconds=None,
-        )
-        self.db.add(video)
+        existing_video = await self.db.execute(select(Video).where(Video.video_id == youtube_id))
+        if not existing_video.scalar_one_or_none():
+            video = Video(
+                video_id=youtube_id,
+                session_id=session_id,
+                platform="youtube",
+                url=youtube_url,
+                duration_seconds=None,
+            )
+            self.db.add(video)
 
     async def _persist_speakers(self, transcript: SessionTranscript) -> None:
         speaker_set = set()
@@ -688,6 +698,13 @@ INSTRUCTIONS:
         session_id: str,
         transcript: SessionTranscript,
     ) -> dict[tuple[int, int, int], str]:
+        existing = await self.db.execute(
+            select(TranscriptSegment).where(TranscriptSegment.video_id == youtube_id)
+        )
+        if existing.scalar_one_or_none():
+            logger.info("Segments already exist for video: %s", youtube_id)
+            raise ValueError(f"Transcript segments already exist for video {youtube_id}")
+
         segmenter = TranscriptSegmenter()
         segments = segmenter.segment(transcript)
 
