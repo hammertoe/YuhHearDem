@@ -13,7 +13,7 @@ class Speaker(Base):
 
     __tablename__ = "speakers"
 
-    id: Mapped[pg_UUID] = mapped_column(server_default="gen_random_uuid()", primary_key=True)
+    id = mapped_column(pg_UUID, server_default="gen_random_uuid()", primary_key=True)
     canonical_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(100))

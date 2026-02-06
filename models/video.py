@@ -13,7 +13,7 @@ class Video(Base):
 
     __tablename__ = "videos"
 
-    id: Mapped[pg_UUID] = mapped_column(server_default="gen_random_uuid()", primary_key=True)
+    id = mapped_column(pg_UUID, server_default="gen_random_uuid()", primary_key=True)
     video_id: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
     session_id: Mapped[str] = mapped_column(
         String(100),
