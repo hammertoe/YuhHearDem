@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 import yt_dlp
 from pydantic import BaseModel, Field
+import requests
+from html import unescape
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import NoResultFound
@@ -206,43 +208,80 @@ class VideoIngestor:
         self, youtube_url: str
     ) -> tuple[date | None, str | None, str | None, str | None]:
         """Extract session date, chamber, title, sitting number from video metadata using LLM."""
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": "in_search",
-            "cookiesfrombrowser": ("chrome",),
-        }
+        video_id = self._extract_video_id(youtube_url)
+        if not video_id:
+            return None, None, None, None
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-                title = info.get("title", "")
-                description = info.get("description", "") or ""
-                upload_date = info.get("upload_date", "")
+            title, description, upload_date = self._get_video_info_from_page(video_id)
 
-                logger.info("Video title: %s", title)
-                logger.info("Upload date: %s", upload_date)
+            logger.info("Video title: %s", title)
+            logger.info("Upload date: %s", upload_date)
 
-                metadata = self._extract_metadata_with_llm(title, description, upload_date)
+            metadata = self._extract_metadata_with_llm(title, description, upload_date)
 
-                if metadata.session_date:
-                    logger.info("Extracted session_date: %s", metadata.session_date)
-                if metadata.chamber:
-                    logger.info("Extracted chamber: %s", metadata.chamber)
-                if metadata.title:
-                    logger.info("Extracted title: %s", metadata.title)
+            if metadata.session_date:
+                logger.info("Extracted session_date: %s", metadata.session_date)
+            if metadata.chamber:
+                logger.info("Extracted chamber: %s", metadata.chamber)
+            if metadata.title:
+                logger.info("Extracted title: %s", metadata.title)
 
-                return (
-                    metadata.session_date,
-                    metadata.chamber,
-                    metadata.title,
-                    metadata.sitting_number,
-                )
+            return (
+                metadata.session_date,
+                metadata.chamber,
+                metadata.title,
+                metadata.sitting_number,
+            )
 
         except Exception as e:
             logger.warning("Failed to extract video metadata: %s", e)
 
         return None, None, None, None
+
+    def _extract_video_id(self, youtube_url: str) -> str | None:
+        """Extract video ID from YouTube URL."""
+        patterns = [
+            r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+            r'youtube\.com\/shorts\/([^"&?\/\s]{11})',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, youtube_url)
+            if match:
+                return match.group(1)
+        return None
+
+    def _get_video_info_from_page(self, video_id: str) -> tuple[str, str, str]:
+        """Fetch video metadata from public YouTube watch page (no auth required)."""
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html = response.text
+
+        title = "Unknown"
+        description = "N/A"
+        upload_date = ""
+
+        match = re.search(r'<meta\s+itemprop="name"\s+content="([^"]+)"', html)
+        if match:
+            title = unescape(match.group(1))
+
+        match = re.search(r'<meta\s+itemprop="description"\s+content="([^"]*)"', html)
+        if match:
+            description = unescape(match.group(1)) or "N/A"
+
+        match = re.search(r'"uploadDate"\s*:\s*"([^"]+)"', html)
+        if match:
+            upload_date = match.group(1)
+        else:
+            match = re.search(r'"publishDate"\s*:\s*"([^"]+)"', html)
+            if match:
+                upload_date = match.group(1)
+
+        return title, description, upload_date
 
     def _extract_metadata_with_llm(
         self,
