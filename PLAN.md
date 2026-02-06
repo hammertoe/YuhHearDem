@@ -37,10 +37,42 @@
    - [X] Removed Alembic dependency and deleted all `migrations/` files.
    - [X] Removed GraphRAG/search services: `services/hybrid_graphrag.py`, `services/simplified_agent.py`, `services/query_entity_extractor.py`, `services/community_summarizer.py`, `storage/knowledge_graph_store.py`
    - [X] Removed GraphRAG scripts: `scripts/compute_communities.py`, `scripts/compute_graph_metrics.py`, `scripts/show_knowledge_graph.py`, `scripts/dump_knowledgebase_rdf.py`
-   - [X] Removed GraphRAG and obsolete tests
    - [X] Removed obsolete models: `models/message.py`, `models/mention.py`, `models/community.py`, `models/legislation.py`, `models/order_paper.py`
    - [X] Removed `storage/` and `services/community_detection.py`, `services/parliamentary_agent_tools.py`, `scripts/dedupe_entities.py`
    - [X] Updated docs to remove migration references
+
+2. **Define new models (tests first)**
+   - [X] Added tests for stable ID formats (`session_id`, `segment_id`, `agenda_item_id`, `speaker_id`).
+   - [X] Added tests for `relationship_evidence` linking to exact `segment_id`s.
+   - [X] Added tests for `agenda_items` linking to `sessions` and `transcript_segments`.
+   - [X] Implemented SQLAlchemy models: `Session`, `AgendaItem`, `Video`, `Speaker`, `TranscriptSegment`, `Entity`, `Relationship`, `RelationshipEvidence`.
+   - [X] All new model tests passing
+
+3. **Database reset flow**
+   - [X] Added `scripts/reset_db.py` with `drop_all()` + `create_all()` using `Base.metadata`.
+
+4. **Video ingestion implementation**
+   - [X] Added auto-detection of session date, chamber, sitting number from video metadata
+   - [X] Implemented multi-method metadata extraction (Invidious, Piped, oEmbed, RSS, YouTube watch page)
+   - [X] Upsert `sessions` + `videos` with `video_id = youtube_id`.
+   - [X] Write `transcript_segments` using `segment_id = {youtube_id}_{start_time_seconds:05d}`.
+   - [X] Handle missing timecodes with default values and counter suffixes to prevent duplicates
+   - [X] Attach `agenda_item_id` when agenda index is known.
+   - [X] Store embeddings and `embedding_model` metadata.
+   - [X] Delete existing segments before inserting new ones (allows re-ingestion)
+   - [X] Skip already ingested videos
+
+5. **Knowledge-graph extraction**
+   - [X] Extract entities and write `entities` with stable `entity_id`.
+   - [X] Extract relationships and write `relationships` with UUID `relationship_id`.
+   - [X] Persist one or more `relationship_evidence` rows per relationship, using segment map from ingestion.
+
+6. **Docs + verification**
+   - [X] Updated README/QUICKSTART/USAGE/docs to reflect new schema
+   - [X] Updated scripts/README.md with new schema and ID formats
+   - [X] Added `--no-thinking` flag documentation
+   - [X] Documented auto-detection features
+   - [X] All new model tests passing
 
 2. **Define new models (tests first)**
    - [X] Added tests for stable ID formats (`session_id`, `segment_id`, `agenda_item_id`, `speaker_id`).

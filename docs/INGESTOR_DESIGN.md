@@ -36,12 +36,12 @@ This document describes a clean-slate schema and ingestion workflow for the YuhH
 - `created_at` (timestamp)
 
 ### transcript_segments
-- `segment_id` (PK, text) — e.g., `{youtube_id}_{start_time_seconds:05d}`
+- `segment_id` (PK, text) — e.g., `{youtube_id}_{start_time_seconds:05d}` or `{youtube_id}_{start_time_seconds:05d}_c{counter}` when timecodes are missing
 - `session_id` (FK → sessions.session_id)
 - `video_id` (FK → videos.video_id)
 - `speaker_id` (FK → speakers.speaker_id)
-- `start_time_seconds` (int)
-- `end_time_seconds` (int)
+- `start_time_seconds` (int, defaults to 0 when not parseable)
+- `end_time_seconds` (int, defaults to start_time_seconds + 10 when not parseable)
 - `text` (text)
 - `agenda_item_id` (FK, optional)
 - `speech_block_index` (int)

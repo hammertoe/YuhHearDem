@@ -16,7 +16,7 @@ YuhHearDem uses advanced NLP techniques to:
 
 - **Ingestion**: Python 3.13 scripts (async)
 - **Database**: PostgreSQL 16 with pgvector extension
-- **NLP**: spaCy, sentence-transformers
+- **NLP**: spaCy, Google Gemini API, sentence-transformers
 - **Video Processing**: YouTube URLs processed directly by Gemini API (no downloads)
 
 Note: The web UI and API have been moved to a separate package. This repository focuses on scraping and ingestion tooling.
@@ -38,18 +38,17 @@ docker-compose up -d
 # 3. Initialize schema
 python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
 
-# 4. Ingest data
-# Option A: Full pipeline (automatic)
-python scripts/run_full_ingestion.py --chamber house --max-papers 10
+# 4. Ingest data (single video)
+python scripts/ingest_video.py --url 'https://www.youtube.com/watch?v=VIDEO_ID' --no-thinking
 
-# Option B: Manual step-by-step
-# See scripts/README.md for details
+# Or ingest from mapping file
+python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
 ### Local Development
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone git@github.com:hammertoe/YuhHearDem.git
 cd YuhHearDem
 
@@ -69,9 +68,6 @@ cp .env.example .env
 
 # Initialize schema
 python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
-
-# Ingest videos (YouTube URLs processed directly by Gemini)
-python scripts/ingest_video.py --mapping data/video_mapping.json
 ```
 
 ## Project Structure
@@ -81,7 +77,7 @@ YuhHearDem/
 ├── core/               # Shared utilities (config, DB, logging)
 ├── data/               # Raw data files (not in git)
 ├── docs/               # Documentation
-├── models/             # SQLAlchemy models (new schema)
+├── models/             # SQLAlchemy models
 ├── parsers/            # Document parsers
 ├── processed/          # Processed data output
 ├── scripts/            # Scraping + ingestion tools
@@ -132,8 +128,10 @@ Schema is created directly from SQLAlchemy models.
 ```bash
 # Initialize schema on a fresh database
 python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
-```
 
+# Reset schema (development only, drops all data)
+python scripts/reset_db.py
+```
 
 ## Configuration
 
@@ -144,21 +142,52 @@ Key environment variables (see `.env.example`):
 ```bash
 # Database
 DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/yuhheardem
+DATABASE_POOL_SIZE=20
+DATABASE_MAX_OVERFLOW=10
 
 # API Keys
 GOOGLE_API_KEY=your_api_key
 
+# Google Gemini
+GEMINI_MODEL=gemini-3-flash-preview
+GEMINI_TEMPERATURE=0.3
+
 # Application
 APP_ENV=development|production
 DEBUG=True|False
+LOG_LEVEL=INFO
 
 # Vector Search
 EMBEDDING_MODEL=all-MiniLM-L6-v2
 EMBEDDING_DIMENSIONS=384
 
+# spaCy
+SPACY_MODEL=en_core_web_trf
+
 # Fuzzy Matching
 FUZZY_MATCH_THRESHOLD=85
+
+# Cache
+CACHE_TTL_SECONDS=3600
 ```
+
+## Key Features
+
+### Video Ingestion
+
+- **Auto-detection**: Automatically extracts session date, chamber, and sitting number from video metadata
+- **Multi-method metadata**: Uses Invidious, Piped, oEmbed, and RSS with fallback to YouTube watch page
+- **Fast ingestion**: `--no-thinking` flag disables Gemini thinking mode for faster processing
+- **YouTube URLs only**: Videos are never downloaded - URLs passed directly to Gemini API
+- **Stable IDs**: All IDs are deterministic and stable across re-ingestion
+- **Duplicate detection**: Skips existing videos and segments automatically
+
+### Knowledge Graph Extraction
+
+- Two-pass extraction (entities first, then relationships)
+- Explicit evidence linking to transcript segments
+- Entity deduplication with fuzzy matching
+- Relationship confidence scoring
 
 ## Documentation
 
@@ -173,14 +202,35 @@ FUZZY_MATCH_THRESHOLD=85
 | [README.md](./README.md) | Project overview and quick start | Everyone |
 | [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup | New users |
 | [USAGE.md](./USAGE.md) | Script usage and examples | Users |
-| [scripts/README.md](./scripts/README.md) | Data ingestion guide | Users |
+| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide | Users |
+| [docs/INGESTOR_DESIGN.md](./docs/INGESTOR_DESIGN.md) | Schema design and data flow | Developers |
+
+## Important Notes
+
+### No Video Downloads Policy
+
+At no point should this system download video files. All video processing must use YouTube URLs directly with the Gemini API. This approach:
+
+- Saves disk space
+- Avoids bandwidth costs
+- Prevents copyright concerns
+- Uses Gemini's native video understanding capabilities
+
+### Re-ingestion Support
+
+The system supports re-ingesting the same video:
+
+- Existing videos are automatically skipped
+- Existing transcript segments are deleted and replaced
+- Relationship evidence is replaced with new data
+- Segment IDs use counter suffixes (`_c01`, `_c02`) when timecodes are missing to prevent duplicates
 
 ## Contributing
 
-1. Fork the repository
+1. Fork repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ### Code Style
@@ -204,6 +254,6 @@ For issues, questions, or contributions:
 
 ## Acknowledgments
 
-- Built for the Barbados parliamentary data
+- Built for Barbados parliamentary data
 - Uses open-source NLP libraries
 - Inspired by similar knowledge graph projects

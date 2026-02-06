@@ -28,12 +28,10 @@ Video ingestion now handles session creation, agenda items, transcription, and k
 # Single video URL (YouTube URL passed directly to Gemini - no download)
 python scripts/ingest_video.py \
     --url https://www.youtube.com/watch?v=VIDEO_ID \
-    --chamber house \
-    --session-date "2024-01-15" \
-    --sitting-number "10"
+    --no-thinking
 
 # From mapping file
-python scripts/ingest_video.py --mapping data/video_mapping.json
+python scripts/ingest_video.py --mapping data/video_mapping.json --no-thinking
 ```
 
 ### 2. Scrape Session Papers (Optional, for context only)
@@ -72,17 +70,21 @@ Relationship evidence is now explicit - no heuristic matching at runtime. Each r
 
 ### `ingest_video.py`
 
-Primary ingestion script that creates the complete knowledge graph.
+Primary ingestion script that creates a complete knowledge graph.
 
 **Features:**
+- Auto-detects session date, chamber, and sitting number from video metadata
+- Multi-method metadata extraction (Invidious, Piped, oEmbed, RSS, YouTube watch page)
 - Creates Session and Video records with stable IDs
 - Transcribes with speaker attribution using Gemini Video API
 - Creates AgendaItem records for each agenda topic
 - Creates TranscriptSegment records with stable IDs
-- Extracts entities and relationships
+- Handles missing timecodes with counter suffixes to prevent duplicate IDs
+- Extracts entities and relationships (two-pass extraction)
 - Creates RelationshipEvidence rows linking relationships to segments
 - Stores embeddings and model metadata
 - Skips already ingested videos
+- Automatically deletes and replaces existing segments on re-ingestion
 
 **Options:**
 - `--url`: YouTube URL to ingest
@@ -92,6 +94,9 @@ Primary ingestion script that creates the complete knowledge graph.
 - `--sitting-number`: Sitting number
 - `--session-id`: Stable session ID (auto-generated if not provided)
 - `--fps`: Frames per second for video sampling
+- `--start-time`: Start time in seconds
+- `--end-time`: End time in seconds
+- `--no-thinking`: Disable Gemini thinking mode for faster processing (recommended)
 
 **Video Mapping Format:**
 ```json
@@ -134,12 +139,14 @@ python scripts/reset_db.py
    - Go to Barbados Parliament YouTube channel
    - Copy video URLs
 
-2. **Create video mapping:**
-   - Create `data/video_mapping.json` with metadata
-
-3. **Ingest videos:**
+2. **Ingest videos (recommended with --no-thinking):**
    - Run video ingestion script
    - Stable IDs auto-generated from metadata
+   - Session date, chamber, and sitting number auto-detected
+
+3. **Verify data:**
+   - Check database for expected records
+   - Use UI package for querying
 
 ## Schema Changes
 
@@ -155,17 +162,22 @@ python scripts/reset_db.py
 - `relationship_evidence` table (explicit evidence links)
 - Stable text primary keys on all major tables
 - Embedding support on `transcript_segments`
+- Auto-detection of session metadata
+- Counter suffixes for duplicate segment IDs
 
 ## ID Formats
 
 All IDs are deterministic and stable:
 
-- `session_id`: `s_{sitting_number}_{YYYY_MM_DD}`
-- `video_id`: YouTube ID (e.g., `abc123xyz`)
-- `segment_id`: `{youtube_id}_{start_time_seconds:05d}` (e.g., `abc123xyz_00005`)
-- `agenda_item_id`: `{session_id}_a{index}` (e.g., `s_10_2026_01_15_a0`)
-- `speaker_id`: `p_{last_name}_{initials}` (e.g., `p_smith_jd`)
-- `entity_id`: Stable slug from source or provided (e.g., `bill_road_traffic_2025`)
+| Entity | Format | Example |
+|--------|---------|----------|
+| Session ID | `s_{sitting_number}_{YYYY_MM_DD}` | `s_10_2026_01_15` |
+| Video ID | YouTube ID | `Syxyah7QIaM` |
+| Segment ID | `{youtube_id}_{start_time_seconds:05d}` | `abc123xyz_00005` |
+| - With timecode missing | `{youtube_id}_{start_time_seconds:05d}_c{counter}` | `abc123xyz_00000_c01` |
+| Agenda Item ID | `{session_id}_a{index}` | `s_10_2026_01_15_a0` |
+| Speaker ID | `p_{last_name}_{initials}` | `p_smith_jd` |
+| Entity ID | Stable slug from source or provided | `bill_road_traffic_2025` |
 
 ## Troubleshooting
 
@@ -176,6 +188,7 @@ If transcription/parsing fails:
 2. Verify quota and billing
 3. Check network connectivity to Google API
 4. Reduce FPS if hitting token limits
+5. Use `--no-thinking` flag for faster processing
 
 ### Database Issues
 
@@ -185,6 +198,13 @@ If ingestion fails:
 3. Reset schema: `python scripts/reset_db.py`
 4. Check logs for detailed error messages
 
+### Duplicate Key Errors
+
+If you see duplicate key errors during re-ingestion:
+1. Run ingestion again - segments are automatically cleaned up
+2. If persistent, check `relationship_evidence` table for orphaned records
+3. Use `reset_db.py` to clear the database (development only)
+
 ## Next Steps
 
 After ingestion:
@@ -192,6 +212,7 @@ After ingestion:
 1. Add more videos to mapping file
 2. Run video ingestion script
 3. Query knowledge graph via UI package
+4. Use AGENTS.md for understanding codebase structure
 
 For more details, see:
 - `INGESTOR_DESIGN.md` - Complete schema design and ingestion flow

@@ -150,12 +150,23 @@ DATABASE_URL=postgresql+asyncpg://postgres:YHD_9f3b7c2d5a8e1f6g@<EXTERNAL_IP>:54
 
 ## Running Ingestion
 
-**Single video:**
+**Single video (simplest - auto-detects metadata):**
 ```bash
 source venv/bin/activate
 python3 scripts/ingest_video.py \
   --url "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --no-thinking
+```
+
+**Single video (with custom metadata):**
+```bash
+source venv/bin/activate
+python3 scripts/ingest_video.py \
+  --url "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --chamber house \
   --session-date "YYYY-MM-DD" \
+  --sitting-number "10" \
+  --start-time 0 \
   --end-time 600 \
   --no-thinking
 ```
@@ -163,7 +174,8 @@ python3 scripts/ingest_video.py \
 **From JSON mapping file:**
 ```bash
 python3 scripts/ingest_video.py \
-  --mapping data/video_mapping.json
+  --mapping data/video_mapping.json \
+  --no-thinking
 ```
 
 **Order paper PDF:**

@@ -4,140 +4,190 @@
 
 Complete data ingestion pipeline with the following scripts:
 
-### Scripts
-- `scrape_session_papers.py` - Scrapes session papers from parliament website
-- `ingest_order_paper.py` - Parses PDFs & saves to database
+### Primary Scripts
 - `ingest_video.py` - Transcribes videos (using YouTube URLs directly) & saves to database
-- `match_videos_to_papers.py` - Matches videos to order papers automatically
-- `run_full_ingestion.py` - Orchestrates full pipeline
-- `daily_pipeline.py` - Automated daily pipeline
+- `scrape_session_papers.py` - Scrapes session papers from parliament website
+- `reset_db.py` - Database reset utility for development
 
 ### Documentation
 - `scripts/README.md` - Detailed script documentation
 - `QUICKSTART.md` - Step-by-step getting started guide
+- `docs/INGESTOR_DESIGN.md` - Schema design and data flow
 
-**Important**: This system processes YouTube videos by passing URLs directly to the Gemini API. Video files are never downloaded locally. See [AGENTS.md](./AGENTS.md) for details.
+**Important**: This system processes YouTube videos by passing URLs directly to Gemini API. Video files are never downloaded locally. See [AGENTS.md](./AGENTS.md) for details.
 
 ## How to Use
 
 ### Option 1: Quick Start (Recommended)
 
-**Step 1: Download Session Papers**
-```bash
-# Go to: https://www.barbadosparliament.com/order_papers/search
-# Click "House of Assembly" tab
-# Download PDFs to: data/papers/
-```
+**Step 1: Get YouTube Video URL**
+
+Go to Barbados Parliament YouTube channel and copy a video URL.
 
 **Step 2: Ingest to Database**
-```bash
-# Ingest order papers
-python scripts/ingest_order_paper.py data/papers/
-
-# Create mapping file for videos
-# Create: data/video_mapping.json
-# Format: See below
-
-# Ingest videos (YouTube URLs processed directly by Gemini)
-python scripts/ingest_video.py --mapping data/video_mapping.json
-```
-
-**Step 3: Match and Process Videos**
-```bash
-python scripts/match_videos_to_papers.py
-python scripts/daily_pipeline.py
-```
-
-### Option 2: Daily Pipeline (Recommended for Automation)
 
 ```bash
-# Run full automated pipeline
-python scripts/daily_pipeline.py
-
-# Or run specific steps
-python scripts/daily_pipeline.py --step scrape
-python scripts/daily_pipeline.py --step match
-python scripts/daily_pipeline.py --step process
+# Simplest approach - auto-detects metadata
+python scripts/ingest_video.py \
+  --url "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --no-thinking
 ```
 
-### Option 3: Full Pipeline (Advanced)
+**What happens:**
+1. Video metadata is auto-detected (session date, chamber, sitting number)
+2. YouTube URL is passed directly to Gemini Video API (no download)
+3. Video is transcribed with speaker attribution
+4. Knowledge graph is extracted (entities and relationships)
+5. Data is saved to PostgreSQL with stable IDs
 
-```bash
-# Run full ingestion pipeline for order papers
-python scripts/run_full_ingestion.py --chamber house --max-papers 10
+### Option 2: Batch Ingestion
 
-# Then match and process videos
-python scripts/daily_pipeline.py --step match
-```
-
-Note: The scraper may need manual adjustment based on website structure. Manual download is often more reliable.
-
-## File Format
-
-### data/video_mapping.json
+Create a mapping file `data/video_mapping.json`:
 
 ```json
 [
     {
         "youtube_url": "https://www.youtube.com/watch?v=ABC123",
         "chamber": "house",
-        "session_date": "2024-01-15",
-        "order_paper_pdf": "data/papers/session_paper.pdf"
+        "session_date": "2024-01-15"
     },
     {
         "youtube_url": "https://www.youtube.com/watch?v=DEF456",
         "chamber": "house",
-        "session_date": "2024-02-20",
-        "order_paper_pdf": "data/papers/session_paper_2.pdf"
+        "session_date": "2024-02-20"
     }
 ]
 ```
 
+Then ingest:
+
+```bash
+python scripts/ingest_video.py --mapping data/video_mapping.json --no-thinking
+```
+
+### Option 3: Scrape Session Papers (Optional)
+
+```bash
+# List available papers
+python scripts/scrape_session_papers.py
+
+# Download PDFs
+python scripts/scrape_session_papers.py --download
+
+# Specific chamber
+python scripts/scrape_session_papers.py --chamber senate --download
+```
+
+**Note:** The scraper is a template and may need manual adjustment. Manual download of PDFs is often faster and more reliable.
+
+## Command-Line Options
+
+### `ingest_video.py`
+
+```bash
+python scripts/ingest_video.py [OPTIONS]
+
+Options:
+  --url URL                 # YouTube URL to ingest
+  --mapping PATH             # JSON file with video metadata
+  --chamber {house,senate}  # Chamber (default: house)
+  --session-date YYYY-MM-DD   # Session date
+  --sitting-number N        # Sitting number
+  --session-id ID           # Stable session ID (auto-generated if not provided)
+  --fps N                   # Frames per second for video sampling
+  --start-time N            # Start time in seconds
+  --end-time N              # End time in seconds
+  --no-thinking              # Disable Gemini thinking mode (faster, recommended)
+```
+
+### `scrape_session_papers.py`
+
+```bash
+python scripts/scrape_session_papers.py [OPTIONS]
+
+Options:
+  --chamber {house,senate}  # Chamber (default: house)
+  --download                  # Download PDFs to data directory
+```
+
+### `reset_db.py`
+
+```bash
+python scripts/reset_db.py
+
+# Drops all tables and recreates from SQLAlchemy models
+# WARNING: This will delete all data!
+# Development only
+```
+
 ## What Each Script Does
 
-### 1. scrape_session_papers.py
+### `ingest_video.py`
 
-- Scrapes https://www.barbadosparliament.com/order_papers/search
+Primary ingestion script that creates the complete knowledge graph.
+
+**Features:**
+- Auto-detects session date, chamber, and sitting number from video metadata
+- Multi-method metadata extraction (Invidious, Piped, oEmbed, RSS, YouTube watch page)
+- Creates Session and Video records with stable IDs
+- Transcribes video via Gemini Video API (no download)
+- Creates AgendaItem records for each agenda topic
+- Creates TranscriptSegment records with stable IDs
+- Handles missing timecodes with counter suffixes to prevent duplicate IDs
+- Extracts entities from transcript
+- Creates Entity, Relationship, and RelationshipEvidence records
+- Stores embeddings and model metadata
+- Skips already ingested videos
+- Automatically deletes and replaces existing segments on re-ingestion
+
+**Video Mapping Format:**
+```json
+[
+    {
+        "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+        "chamber": "house",
+        "session_date": "2024-01-15",
+        "session_id": "s_10_2024_01_15",
+        "sitting_number": "10"
+    }
+]
+```
+
+### `scrape_session_papers.py`
+
+Scraps session papers from parliament website.
+
 - Extracts PDF links, titles, and dates
 - Downloads PDFs to `data/papers/`
-- Usage: `python scripts/scrape_session_papers.py --download`
+- Note: This is optional and primarily for reference. Video ingestion works independently.
 
-### 2. ingest_order_paper.py
+### `reset_db.py`
 
-- Parses PDF with Gemini Vision API
-- Extracts: session title, date, speakers, agenda items
-- Saves to `order_papers` table
-- Creates speaker records
-- Usage: `python scripts/ingest_order_paper.py PDF_PATH`
+Database reset utility for development.
 
-### 3. ingest_video.py
+- Drops all tables
+- Recreates from SQLAlchemy models
+- Warning: This will delete all data!
 
-- Transcribes YouTube video with Gemini API
-- **Uses YouTube URLs directly** - no video download required
-- Extracts entities from transcript
-- Saves to `videos` table
-- Links to order papers if provided
-- Usage: `python scripts/ingest_video.py --mapping MAPPING_FILE`
+## ID Formats
 
-### 4. match_videos_to_papers.py
+All IDs are stable and deterministic:
 
-- Matches YouTube videos to order papers automatically
-- Based on session date, chamber, and sitting number
-- Auto-accepts high-confidence matches
-- Flags ambiguous matches for review
-- Usage: `python scripts/match_videos_to_papers.py`
-
-### 5. dedupe_entities.py
-
-- Deduplicates entities after ingestion using fuzzy matching plus LLM validation
-- Rewrites mentions and relationships to the survivor entity
-- Usage: `python scripts/dedupe_entities.py --dry-run`
+| Entity | Format | Example |
+|--------|---------|----------|
+| Session ID | `s_{sitting_number}_{YYYY_MM_DD}` | `s_10_2026_01_15` |
+| Video ID | YouTube ID | `Syxyah7QIaM` |
+| Segment ID | `{youtube_id}_{start_time_seconds:05d}` | `abc123xyz_00395` |
+| - With timecode missing | `{youtube_id}_{start_time_seconds:05d}_c{counter}` | `abc123xyz_00000_c01` |
+| Agenda Item ID | `{session_id}_a{index}` | `s_10_2026_01_15_a0` |
+| Speaker ID | `p_{last_name}_{initials}` | `p_smith_jd` |
+| Entity ID | Stable slug from source | `bill_road_traffic_2025` |
 
 ## Troubleshooting
 
 ### Module Not Found Errors
 
-Make sure to activate the virtual environment:
+Make sure you activate the virtual environment:
 ```bash
 source venv/bin/activate
 ```
@@ -160,23 +210,35 @@ docker-compose restart
 - Check `.env` file has `GOOGLE_API_KEY`
 - Verify API key has billing enabled
 - Check Google Cloud console for quota usage
-- API has rate limits, start with small batches
+- API has rate limits - use `--no-thinking` for faster processing
+- Start with smaller batches
+
+### Duplicate Key Errors
+
+If you see duplicate key errors during re-ingestion:
+1. Run the ingestion again - segments are automatically cleaned up
+2. If persistent, use `reset_db.py` to clear the database (development only)
 
 ## Current Status
 
 ✅ Scripts created and committed
 ✅ Documentation written
 ✅ Type errors fixed
-✅ Scraper URL updated to correct parliament website
 ✅ Video download code removed - URLs processed directly by Gemini
+✅ Auto-detection of session metadata
+✅ Multi-method metadata extraction with fallbacks
+✅ `--no-thinking` flag for faster processing
+✅ Automatic handling of duplicate segment IDs
 
-## Next Steps
+## Notes
 
-1. Download sample PDF from parliament website
-2. Test ingestion with single files first
-3. Run the daily pipeline for automation
-
----
+- The scraper is a template and may need adjustment for website changes
+- Manual download of PDFs is often faster and more reliable
+- Start with 1-2 test videos to verify the pipeline works
+- Gemini API has rate limits - use `--no-thinking` for faster processing
+- Check quota if requests fail
+- All changes are committed to git
+- **Videos are never downloaded** - YouTube URLs processed directly by Gemini API
 
 ## Documentation Index
 
@@ -186,47 +248,4 @@ docker-compose restart
 | [README.md](./README.md) | Project overview and quick start |
 | [QUICKSTART.md](./QUICKSTART.md) | Step-by-step local setup |
 | [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
-| [scripts/README.md](./scripts/README.md) | Data ingestion scripts guide |
-
-## Example Workflow
-
-```bash
-# Create directories
-mkdir -p data/papers
-
-# 1. Download a session paper manually
-# Visit: https://www.barbadosparliament.com/order_papers/search
-# Save PDF to: data/papers/test.pdf
-
-# 2. Ingest it
-source venv/bin/activate
-python scripts/ingest_order_paper.py data/papers/test.pdf
-
-# 3. Create minimal mapping for video
-# YouTube URL will be processed directly by Gemini - no download needed
-cat > data/video_mapping.json << 'EOF'
-[
-    {
-        "youtube_url": "https://www.youtube.com/watch?v=SAMPLE",
-        "chamber": "house",
-        "session_date": "2024-01-15"
-    }
-]
-EOF
-
-# 4. Ingest video (URL passed directly to Gemini)
-python scripts/ingest_video.py --mapping data/video_mapping.json
-
-# 5. Match and process videos
-python scripts/match_videos_to_papers.py
-python scripts/daily_pipeline.py
-```
-
-## Notes
-
-- The scraper is a template and may need adjustment for website changes
-- Manual download of PDFs is often faster and more reliable
-- Start with 1-2 test files to verify pipeline works
-- Gemini API has rate limits - check quota if requests fail
-- All changes are committed to git
-- **Videos are never downloaded** - YouTube URLs processed directly by Gemini API
+| [docs/INGESTOR_DESIGN.md](./docs/INGESTOR_DESIGN.md) | Schema design and data flow |
