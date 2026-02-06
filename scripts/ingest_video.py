@@ -698,12 +698,10 @@ INSTRUCTIONS:
         session_id: str,
         transcript: SessionTranscript,
     ) -> dict[tuple[int, int, int], str]:
-        existing = await self.db.execute(
-            select(TranscriptSegment).where(TranscriptSegment.video_id == youtube_id)
+        await self.db.execute(
+            delete(TranscriptSegment).where(TranscriptSegment.video_id == youtube_id)
         )
-        if existing.scalar_one_or_none():
-            logger.info("Segments already exist for video: %s", youtube_id)
-            raise ValueError(f"Transcript segments already exist for video {youtube_id}")
+        await self.db.flush()
 
         segmenter = TranscriptSegmenter()
         segments = segmenter.segment(transcript)
