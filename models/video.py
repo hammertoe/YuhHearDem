@@ -19,6 +19,13 @@ class Video(Base):
     __tablename__ = "videos"
 
     id: Mapped[_uuid.UUID] = mapped_column(primary_key=True)
+    video_id: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
+    session_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     platform: Mapped[str] = mapped_column(String(50), nullable=False, default="youtube")
     url: Mapped[str] = mapped_column(String, nullable=False)
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
