@@ -441,14 +441,14 @@ INSTRUCTIONS:
                         speaker_id = self._generate_speaker_id(speech.speaker_name)
                         speaker_set.add((speaker_id, speech.speaker_name))
 
-        for speaker_id, name in speaker_set:
+        for canonical_id, name in speaker_set:
             existing = await self.db.execute(
-                select(Speaker).where(Speaker.speaker_id == speaker_id)
+                select(Speaker).where(Speaker.canonical_id == canonical_id)
             )
             if not existing.scalar_one_or_none():
                 self.db.add(
                     Speaker(
-                        speaker_id=speaker_id,
+                        canonical_id=canonical_id,
                         name=name,
                         title=None,
                         role=None,

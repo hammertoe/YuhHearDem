@@ -1,6 +1,7 @@
 """Transcript segment model for semantic search."""
 
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,7 +34,8 @@ class TranscriptSegment(Base):
 
     __tablename__ = "transcript_segments"
 
-    segment_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    id: Mapped[UUID] = mapped_column(lambda: uuid4(), primary_key=True)
+    segment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     session_id: Mapped[str] = mapped_column(
         String(100),
         ForeignKey("sessions.session_id", ondelete="CASCADE"),
@@ -46,16 +48,23 @@ class TranscriptSegment(Base):
         nullable=False,
         index=True,
     )
-    speaker_id: Mapped[str | None] = mapped_column(String(100), ForeignKey("speakers.speaker_id"))
-    start_time_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    end_time_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    speaker_id: Mapped[str | None] = mapped_column(
+        String(100), ForeignKey("speakers.canonical_id"), nullable=True
+    )
+    start_time_seconds: Mapped[int] = mapped_column(Integer)
+    end_time_seconds: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     agenda_item_id: Mapped[str | None] = mapped_column(
         String(100), ForeignKey("agenda_items.agenda_item_id"), nullable=True
     )
     speech_block_index: Mapped[int] = mapped_column(Integer)
     segment_index: Mapped[int] = mapped_column(Integer)
-    embedding: Mapped[list | None] = mapped_column(EmbeddingVector(), nullable=True)
+    embedding: Mapped[list] = mapped_column(Vector(384), nullable=False)
     embedding_model: Mapped[str | None] = mapped_column(String(80))
     embedding_version: Mapped[str | None] = mapped_column(String(40))
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default="now()")
+    meta_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=lambda: {})
+    created_at: Mapped[datetime] = mapped_column(
+        nullable=False,
+        server_default="now()",
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
