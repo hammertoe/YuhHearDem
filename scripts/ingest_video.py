@@ -696,6 +696,7 @@ INSTRUCTIONS:
 
         for segment, embedding in zip(segments, embeddings):
             start_time_seconds = segment.start_time_seconds or 0
+            end_time_seconds = segment.end_time_seconds or (start_time_seconds + 10)
             segment_id = f"{youtube_id}_{start_time_seconds:05d}"
             agenda_item_id = None
             if segment.agenda_item_index is not None:
@@ -708,7 +709,7 @@ INSTRUCTIONS:
                     video_id=youtube_id,
                     speaker_id=segment.speaker_id,
                     start_time_seconds=start_time_seconds,
-                    end_time_seconds=segment.end_time_seconds,
+                    end_time_seconds=end_time_seconds,
                     text=segment.text,
                     agenda_item_id=agenda_item_id,
                     speech_block_index=segment.speech_block_index,
@@ -818,7 +819,7 @@ INSTRUCTIONS:
                         relationship_id=relationship_id,
                         segment_id=segment_id,
                         video_id=youtube_id,
-                        start_time_seconds=segment.start_time_seconds,
+                        start_time_seconds=segment.start_time_seconds or 0,
                     )
                 )
 
