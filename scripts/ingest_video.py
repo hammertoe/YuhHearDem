@@ -709,10 +709,21 @@ INSTRUCTIONS:
         texts = [segment.text for segment in segments]
         embeddings = self.embedding_service.generate_embeddings(texts)
 
+        segment_counter = 0
+        used_segment_ids = set()
+
         for segment, embedding in zip(segments, embeddings):
             start_time_seconds = segment.start_time_seconds or 0
             end_time_seconds = segment.end_time_seconds or (start_time_seconds + 10)
-            segment_id = f"{youtube_id}_{start_time_seconds:05d}"
+
+            base_id = f"{youtube_id}_{start_time_seconds:05d}"
+            segment_id = base_id
+            if segment_id in used_segment_ids:
+                segment_counter += 1
+                segment_id = f"{base_id}_c{segment_counter:02d}"
+
+            used_segment_ids.add(segment_id)
+
             agenda_item_id = None
             if segment.agenda_item_index is not None:
                 agenda_item_id = f"{session_id}_a{segment.agenda_item_index}"
