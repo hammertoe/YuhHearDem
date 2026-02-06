@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -14,7 +13,7 @@ class Video(Base):
 
     __tablename__ = "videos"
 
-    id: Mapped[pg_UUID] = mapped_column(server_default=func.gen_random_uuid(), primary_key=True)
+    id = mapped_column(func.gen_random_uuid(), primary_key=True)
     video_id: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, index=True)
     session_id: Mapped[str] = mapped_column(
         String(100),

@@ -38,7 +38,7 @@ class TranscriptSegment(Base):
 
     __tablename__ = "transcript_segments"
 
-    id: Mapped[UUID] = mapped_column(server_default=func.gen_random_uuid(), primary_key=True)
+    id = mapped_column(func.gen_random_uuid(), primary_key=True)
     segment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     session_id: Mapped[str] = mapped_column(
         String(100),

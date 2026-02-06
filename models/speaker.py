@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID as pg_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -14,7 +13,7 @@ class Speaker(Base):
 
     __tablename__ = "speakers"
 
-    id: Mapped[pg_UUID] = mapped_column(server_default=func.gen_random_uuid(), primary_key=True)
+    id = mapped_column(func.gen_random_uuid(), primary_key=True)
     canonical_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(100))
