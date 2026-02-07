@@ -29,6 +29,7 @@ from core.config import get_settings
 from core.database import get_session_maker
 from models.agenda_item import AgendaItem
 from models.entity import Entity
+from models.order_paper import OrderPaper
 from models.relationship import Relationship
 from models.relationship_evidence import RelationshipEvidence
 from models.session import Session as SessionModel
@@ -40,6 +41,11 @@ from services.embeddings import EmbeddingService
 from services.entity_extractor import EntityExtractor, ExtractedRelationship, ExtractionResult
 from services.gemini import GeminiClient
 from services.transcript_segmenter import TranscriptSegmentData, TranscriptSegmenter
+from services.video_paper_matcher import (
+    MatchResult,
+    VideoMetadata as PaperVideoMetadata,
+    VideoPaperMatcher,
+)
 from services.video_transcription import VideoTranscriptionService
 
 
@@ -119,6 +125,7 @@ class VideoIngestor:
             logger.info("Segments already exist for video: %s", youtube_id)
             return {"status": "skipped", "reason": "segments_already_exist"}
 
+        detected_title = None
         try:
             if not session_date:
                 detected_date, detected_chamber, detected_title, detected_sitting = (
@@ -137,11 +144,50 @@ class VideoIngestor:
             session_id = await self._ensure_session_id(
                 chamber, session_date, sitting_number, session_id
             )
+
+            # Require order paper match before transcription
+            order_papers = await self._fetch_order_papers()
+            if not order_papers:
+                raise ValueError(
+                    "No order papers found in database. "
+                    "Please ingest order papers first before processing videos."
+                )
+
+            # Match video to order paper
+            video_metadata = PaperVideoMetadata(
+                youtube_id=youtube_id,
+                title=detected_title or "",
+                description="",
+                extracted_session_date=session_date,
+                extracted_chamber=chamber,
+                extracted_sitting=sitting_number,
+            )
+
+            matcher = VideoPaperMatcher()
+            match_result = matcher.match_video(video_metadata, order_papers)
+
+            if match_result.is_ambiguous:
+                raise ValueError(
+                    f"Cannot match video to order paper: {match_result.ambiguity_reason}. "
+                    "Please ensure the order paper for this session is ingested."
+                )
+
+            from typing import cast
+
+            matched_paper_obj = match_result.all_candidates[0][1]
+            matched_paper = cast(OrderPaper, matched_paper_obj)
+            logger.info(
+                "Matched video to order paper: %s (confidence: %d%%)",
+                matched_paper.order_paper_id,
+                match_result.confidence_score,
+            )
+
             transcript = await self._transcribe_video(
                 youtube_url,
                 fps,
                 start_time,
                 end_time,
+                matched_paper,
             )
             extraction, entities_count = self._extract_knowledge_graph(transcript, session_id)
             video = await self._persist_all_data(
@@ -171,6 +217,11 @@ class VideoIngestor:
             logger.error("Failed to ingest video: %s", e, exc_info=True)
             await self.db.rollback()
             return {"status": "error", "error": str(e)}
+
+    async def _fetch_order_papers(self) -> list[OrderPaper]:
+        """Fetch all order papers from database."""
+        result = await self.db.execute(select(OrderPaper))
+        return list(result.scalars().all())
 
     async def _video_exists(self, youtube_id: str) -> bool:
         """Check if a video already exists in the database."""
@@ -503,12 +554,38 @@ Return null for any field that cannot be confidently determined."""
         fps: float | None,
         start_time: int | None,
         end_time: int | None,
+        order_paper: OrderPaper,
     ) -> SessionTranscript:
-        """Transcribe a YouTube video into a structured transcript."""
+        """Transcribe a YouTube video into a structured transcript using order paper context."""
         effective_fps = fps if fps is not None else 0.25
 
         transcript_start = time.perf_counter()
-        prompt = """Transcribe this Barbados parliamentary session.
+
+        # Build prompt with order paper context
+        speakers_list = "\n".join(
+            [f"- {s.get('name', 'Unknown')}" for s in (order_paper.speakers or [])]
+        )
+        agenda_list = "\n".join(
+            [
+                f"{i}. {item.get('topic_title', 'Unknown')}"
+                for i, item in enumerate(order_paper.agenda_items or [], 1)
+            ]
+        )
+
+        prompt = f"""Transcribe this Barbados parliamentary session.
+
+ORDER PAPER CONTEXT:
+Session: {order_paper.session_title}
+Date: {order_paper.session_date}
+Sitting: {order_paper.sitting_number or "N/A"}
+
+Expected Speakers:
+{speakers_list}
+
+Agenda Items:
+{agenda_list}
+
+Use this order paper information to guide the transcription.
 
 STRUCTURE:
 1. Group by agenda items naturally

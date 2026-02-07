@@ -3,6 +3,7 @@
 from core.database import Base
 from models.agenda_item import AgendaItem
 from models.entity import Entity
+from models.order_paper import OrderPaper
 from models.relationship import Relationship
 from models.relationship_evidence import RelationshipEvidence
 from models.session import Session
@@ -20,4 +21,5 @@ __all__ = [
     "AgendaItem",
     "Session",
     "TranscriptSegment",
+    "OrderPaper",
 ]

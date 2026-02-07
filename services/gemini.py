@@ -152,19 +152,22 @@ class GeminiClient:
             return json.loads(response_text)
         except json.JSONDecodeError as e:
             # Enhance error message with response preview for debugging
+            response_len = len(response_text)
             preview_length = 500
             start_preview = response_text[:preview_length]
-            end_preview = (
-                response_text[-preview_length:] if len(response_text) > preview_length else ""
-            )
+            end_preview = response_text[-preview_length:] if response_len > preview_length else ""
 
-            error_msg = "Failed to parse JSON response"
-            if context:
-                error_msg += f" ({context})"
+            # Check if response appears truncated
+            is_truncated = not response_text.rstrip().endswith("}")
+
+            error_msg = f"Failed to parse JSON response ({context})"
             error_msg += f"\nOriginal error: {str(e)}"
+            error_msg += f"\nResponse size: {response_len:,} chars"
+            error_msg += f"\nAppears truncated: {is_truncated}"
+            if is_truncated:
+                error_msg += "\n⚠️  WARNING: Response was truncated! Consider reducing FPS or chunking the video."
             error_msg += f"\nResponse start: {start_preview}"
-            if end_preview and end_preview != start_preview:
-                error_msg += f"\nResponse end: {end_preview}"
+            error_msg += f"\nResponse end: {end_preview}"
 
             print(error_msg)  # Log for debugging
             raise  # Re-raise as original exception
