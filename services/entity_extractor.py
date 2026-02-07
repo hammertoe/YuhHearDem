@@ -1,9 +1,8 @@
 """Entity extraction service using Gemini API."""
 
+import logging
 from dataclasses import dataclass, field, is_dataclass
 from typing import Any
-
-import logging
 
 from models.entity import Entity
 from parsers.transcript_models import SessionTranscript
@@ -691,6 +690,8 @@ IMPORTANT:
         return str(entity_type)
 
     def _extract_speaker_entities(self, transcript: SessionTranscript) -> list[Entity]:
+        import re
+
         speakers: dict[str, str] = {}
         for agenda in transcript.agenda_items:
             for speech in agenda.speech_blocks:
@@ -699,10 +700,12 @@ IMPORTANT:
                 speakers[speech.speaker_id] = speech.speaker_name
 
         speaker_entities = []
-        for speaker_id, speaker_name in speakers.items():
+        for _speaker_id, speaker_name in speakers.items():
+            # Slugify speaker name to create entity_id
+            entity_id = re.sub(r"[^a-z0-9]+", "_", speaker_name.lower()).strip("_")
             speaker_entities.append(
                 Entity(
-                    entity_id=speaker_id,
+                    entity_id=entity_id,
                     entity_type="person",
                     entity_subtype="speaker",
                     name=speaker_name,
@@ -728,8 +731,37 @@ IMPORTANT:
     def _parse_timecode(self, time_str: str) -> int | None:
         import re
 
-        match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
-        if not match:
-            return None
-        minutes, seconds, ms = map(int, match.groups())
-        return minutes * 60 + seconds
+        patterns = [
+            r"(\d+)m(\d+)s(\d+)ms",
+            r"(\d+)m(\d+)s",
+            r"(\d+)s",
+            r"PT(\d+)M(\d+)S",
+            r"PT(\d+)S",
+            r"(\d+):(\d+):(\d+)",
+            r"(\d+):(\d+)",
+        ]
+
+        for pattern in patterns:
+            match = re.match(pattern, time_str)
+            if match:
+                groups = list(map(int, match.groups()))
+                if len(groups) == 3:
+                    if pattern.startswith(r"(\d+)m"):
+                        minutes, seconds, _ms = groups
+                        return minutes * 60 + seconds
+                    else:
+                        hours, minutes, seconds = groups
+                        return hours * 3600 + minutes * 60 + seconds
+                elif len(groups) == 2:
+                    if pattern.startswith(r"(\d+)m"):
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                    elif pattern.startswith(r"PT(\d+)"):
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                    else:
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                elif len(groups) == 1:
+                    return groups[0]
+        return None

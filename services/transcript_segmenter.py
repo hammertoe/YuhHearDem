@@ -100,8 +100,37 @@ class TranscriptSegmenter:
     def _parse_timecode(self, time_str: str) -> int | None:
         import re
 
-        match = re.match(r"(\d+)m(\d+)s(\d+)ms", time_str)
-        if not match:
-            return None
-        minutes, seconds, _ms = map(int, match.groups())
-        return minutes * 60 + seconds
+        patterns = [
+            r"(\d+)m(\d+)s(\d+)ms",
+            r"(\d+)m(\d+)s",
+            r"(\d+)s",
+            r"PT(\d+)M(\d+)S",
+            r"PT(\d+)S",
+            r"(\d+):(\d+):(\d+)",
+            r"(\d+):(\d+)",
+        ]
+
+        for pattern in patterns:
+            match = re.match(pattern, time_str)
+            if match:
+                groups = list(map(int, match.groups()))
+                if len(groups) == 3:
+                    if pattern.startswith(r"(\d+)m"):
+                        minutes, seconds, _ms = groups
+                        return minutes * 60 + seconds
+                    else:
+                        hours, minutes, seconds = groups
+                        return hours * 3600 + minutes * 60 + seconds
+                elif len(groups) == 2:
+                    if pattern.startswith(r"(\d+)m"):
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                    elif pattern.startswith(r"PT(\d+)"):
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                    else:
+                        minutes, seconds = groups
+                        return minutes * 60 + seconds
+                elif len(groups) == 1:
+                    return groups[0]
+        return None

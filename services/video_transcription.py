@@ -125,14 +125,21 @@ SPEAKERS (for speaker identification):
 AGENDA (expected structure):
 {chr(10).join(agenda_list)}
 
-TRANSCRIPTION INSTRUCTIONS:
+ TRANSCRIPTION INSTRUCTIONS:
 1. Structure by agenda items above
 2. For each speech block, provide:
    - speaker_name: Name as spoken (exact wording with titles)
    - speaker_id: Use exact ID from speaker list
    - sentences: List of sentences with timestamps
-3. Timestamp format: XmYsZms (e.g., 0m5s250ms)
-4. Preserve parliamentary language and formal tone"""
+
+TIMESTAMP FORMAT - CRITICAL REQUIREMENT:
+ALL timestamps MUST use this EXACT format: XmYsZms (minutes, seconds, milliseconds)
+- Examples: 0m0s0ms, 2m34s500ms, 45m10s100ms
+- NEVER use: "0:00", "00:00:00", PT0S, or any other format
+- Each sentence MUST have a timestamp
+
+4. Preserve parliamentary language and formal tone
+5. ENSURE CORRECT TIMESTAMP FORMAT FOR EVERY SENTENCE"""
 
     def _parse_response(self, response: dict[str, object]) -> SessionTranscript:
         """Parse Gemini response into SessionTranscript."""

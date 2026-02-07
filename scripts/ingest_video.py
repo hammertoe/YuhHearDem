@@ -12,14 +12,13 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timezone
+from html import unescape
 from pathlib import Path
 from typing import Any
-import yt_dlp
-from pydantic import BaseModel, Field
-import requests
-from html import unescape
 
+import requests
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -516,12 +515,18 @@ STRUCTURE:
 2. For each speech block:
    - speaker_name: Name as spoken
    - sentences: List of sentences with timestamps
-3. Timestamp format: XmYsZms (e.g., 0m5s250ms)
+
+TIMESTAMP FORMAT - CRITICAL REQUIREMENT:
+ALL timestamps MUST use this EXACT format: XmYsZms (minutes, seconds, milliseconds)
+- Examples: 0m0s0ms, 2m34s500ms, 45m10s100ms
+- NEVER use: "0:00", "00:00:00", PT0S, or any other format
+- Each sentence MUST have a timestamp
 
 INSTRUCTIONS:
 - Preserve parliamentary language and formal tone
 - Identify speaker changes clearly
-- Include all content"""
+- Include all content
+- ENSURE CORRECT TIMESTAMP FORMAT FOR EVERY SENTENCE"""
 
         response = self.client.analyze_video_with_transcript(
             video_url=youtube_url,
@@ -712,7 +717,7 @@ INSTRUCTIONS:
         segment_counter = 0
         used_segment_ids = set()
 
-        for segment, embedding in zip(segments, embeddings):
+        for segment, embedding in zip(segments, embeddings, strict=True):
             start_time_seconds = segment.start_time_seconds or 0
             end_time_seconds = segment.end_time_seconds or (start_time_seconds + 10)
 
