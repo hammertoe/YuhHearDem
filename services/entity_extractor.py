@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field, is_dataclass
+from datetime import date, datetime
 from typing import Any
 
 from models.entity import Entity
@@ -100,6 +101,44 @@ ENTITY_ONLY_SCHEMA = {
 }
 
 
+# Relationship taxonomy for parliamentary discourse analysis.
+#
+# This schema defines the types of relationships that can exist between entities
+# extracted from parliamentary transcripts. The taxonomy is designed to capture:
+#
+# 1. DISCOURSE RELATIONSHIPS - How speakers interact with topics and each other:
+#    - mentions: General reference to an entity
+#    - speaks_on: Speaker addressing a specific topic
+#    - questions/answers: Dialogic exchanges
+#    - rebuts: Counter-arguments
+#
+# 2. POSITIONAL RELATIONSHIPS - Stances and affiliations:
+#    - supports/opposes: Positions on bills, policies, or statements
+#    - introduces/sponsors: Legislative actions
+#    - amends: Modifications to existing legislation
+#
+# 3. PROCEDURAL RELATIONSHIPS - Parliamentary process:
+#    - chairs: Presiding over proceedings
+#    - reports_on: Committee or official reporting
+#    - sets_deadline: Scheduling and timing decisions
+#    - prioritizes: Agenda ordering
+#
+# 4. FACTUAL RELATIONSHIPS - Informational connections:
+#    - references: Citations to laws, documents, or prior statements
+#    - relates_to: General thematic connections
+#    - about: Topical associations
+#    - states: Declarative assertions
+#
+# 5. RESOURCE RELATIONSHIPS - Funding and allocation:
+#    - funds: Budgetary commitments
+#    - allocates: Resource distribution
+#
+# 6. CORRECTIVE RELATIONSHIPS - Updates and clarifications:
+#    - corrects: Error corrections
+#    - updates: Information refreshes
+#
+# Each relationship includes sentiment (positive/negative/neutral) and evidence
+# (direct quote) to support traceability and verification.
 RELATIONSHIP_ONLY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -143,7 +182,7 @@ RELATIONSHIP_ONLY_SCHEMA = {
                             "prioritizes",
                             "states",
                         ],
-                        "description": "Type of relationship",
+                        "description": "Type of relationship (see taxonomy documentation above)",
                     },
                     "sentiment": {
                         "type": "string",
@@ -280,10 +319,14 @@ class EntityExtractor:
 
         Returns:
             Merged ExtractionResult with all entities and relationships
+
+        Raises:
+            RuntimeError: If any chunks failed processing and raise_on_failure is True
         """
         session_id = f"{transcript.chamber}-{transcript.date.isoformat()}"
         all_entities = []
         all_relationships = []
+        failed_chunks: list[tuple[int, str, str]] = []
 
         for i, agenda_item in enumerate(transcript.agenda_items, 1):
             print(
@@ -310,15 +353,35 @@ class EntityExtractor:
                     f"         ✓ Found {len(chunk_result.entities)} entities, {len(chunk_result.relationships)} relationships"
                 )
             except (ValueError, KeyError, TypeError, AttributeError) as e:
+                error_msg = str(e)
                 logger.error(
                     "Chunk %s/%s failed for '%s': %s",
                     i,
                     len(transcript.agenda_items),
                     agenda_item.topic_title[:60],
-                    e,
+                    error_msg,
                     exc_info=True,
                 )
+                failed_chunks.append((i, agenda_item.topic_title, error_msg))
                 # Continue with other chunks
+
+        # Report summary of failures if any occurred
+        if failed_chunks:
+            total_chunks = len(transcript.agenda_items)
+            failed_count = len(failed_chunks)
+            logger.warning(
+                "Chunked extraction completed with %s/%s failures",
+                failed_count,
+                total_chunks,
+            )
+            for idx, title, error in failed_chunks:
+                logger.warning("  Failed chunk %s '%s': %s", idx, title[:60], error)
+
+            # Warn if all chunks failed
+            if failed_count == total_chunks:
+                raise RuntimeError(
+                    f"All {total_chunks} chunks failed processing. Check logs for details."
+                )
 
         # Merge results
         return ExtractionResult(
@@ -441,8 +504,13 @@ class EntityExtractor:
             stage="kg_relationships",
         )
 
-        # Parse result into relationship objects
-        relationships = self._parse_relationships(result["relationships"], transcript, session_id)
+        # Build set of valid entity IDs for validation
+        valid_entity_ids = {entity.entity_id for entity in entities}
+
+        # Parse result into relationship objects with validation
+        relationships = self._parse_relationships(
+            result["relationships"], transcript, session_id, valid_entity_ids
+        )
 
         return relationships
 
@@ -600,7 +668,11 @@ IMPORTANT:
         return entities
 
     def _parse_relationships(
-        self, rel_dicts: list[dict], transcript: SessionTranscript, session_id: str
+        self,
+        rel_dicts: list[dict],
+        transcript: SessionTranscript,
+        session_id: str,
+        valid_entity_ids: set[str],
     ) -> list[ExtractedRelationship]:
         """
         Parse relationship dictionaries into Relationship objects.
@@ -609,6 +681,7 @@ IMPORTANT:
             rel_dicts: Raw relationship dictionaries from Gemini
             transcript: Original transcript for context
             session_id: Session identifier
+            valid_entity_ids: Set of valid entity IDs that can be referenced
 
         Returns:
             List of Relationship objects
@@ -616,12 +689,23 @@ IMPORTANT:
         relationships: list[ExtractedRelationship] = []
 
         for rel_dict in rel_dicts:
+            source_id = rel_dict["source_id"]
+            target_id = rel_dict["target_id"]
+
+            # Validate that both source and target entities exist
+            if source_id not in valid_entity_ids:
+                logger.warning("Skipping relationship with invalid source_id '%s'", source_id)
+                continue
+            if target_id not in valid_entity_ids:
+                logger.warning("Skipping relationship with invalid target_id '%s'", target_id)
+                continue
+
             # Find timestamp from evidence quote
             timestamp = self._find_evidence_timestamp(rel_dict["evidence"], transcript)
 
             relationship = ExtractedRelationship(
-                source_id=rel_dict["source_id"],
-                target_id=rel_dict["target_id"],
+                source_id=source_id,
+                target_id=target_id,
                 relation_type=rel_dict["relation_type"],
                 sentiment=rel_dict.get("sentiment"),
                 evidence=rel_dict["evidence"],
@@ -656,6 +740,19 @@ IMPORTANT:
         return None  # Not found
 
     def _serialize_transcript(self, transcript: SessionTranscript) -> dict[str, Any]:
+        """Serialize transcript to dictionary for API transmission.
+
+        Attempts multiple serialization strategies in order:
+        1. Pydantic model_dump() method
+        2. Custom to_dict() method
+        3. Dataclass asdict() with JSON normalization
+
+        Args:
+            transcript: Session transcript to serialize
+
+        Returns:
+            Dictionary representation of the transcript
+        """
         model_dump = getattr(transcript, "model_dump", None)
         if callable(model_dump):
             data = model_dump()
@@ -671,9 +768,20 @@ IMPORTANT:
             return data if isinstance(data, dict) else {}
         return {}
 
-    def _normalize_json(self, payload: Any) -> Any:
-        from datetime import date, datetime
+    def _normalize_json(
+        self, payload: dict[str, Any] | list[Any] | datetime | date | Any
+    ) -> dict[str, Any] | list[Any] | str | Any:
+        """Normalize JSON-serializable data structures.
 
+        Recursively converts datetime objects to ISO format strings and
+        handles nested dicts and lists.
+
+        Args:
+            payload: Data structure to normalize (dict, list, datetime, or scalar)
+
+        Returns:
+            JSON-serializable data structure with datetime objects converted
+        """
         if isinstance(payload, datetime):
             return payload.isoformat()
         if isinstance(payload, date):

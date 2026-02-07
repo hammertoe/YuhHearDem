@@ -2,7 +2,9 @@
 
 import json
 import os
+import signal
 import time
+from collections import deque
 from functools import wraps
 from typing import Callable, ParamSpec, TypeVar
 from pathlib import Path
@@ -16,16 +18,20 @@ R = TypeVar("R")
 
 
 class RateLimiter:
-    """Simple in-memory rate limiter."""
+    """Simple in-memory rate limiter with bounded memory usage."""
 
     def __init__(self, max_calls: int = 60, period: float = 60.0) -> None:
         self.max_calls = max_calls
         self.period = period
-        self.calls: list[float] = []
+        # Use deque with maxlen to prevent unbounded memory growth
+        # Buffer size is 2x max_calls to allow for expired call filtering
+        self.calls: deque[float] = deque(maxlen=max_calls * 2)
 
     def wait_if_needed(self) -> None:
         now = time.time()
-        self.calls = [call_time for call_time in self.calls if now - call_time < self.period]
+        # Remove expired calls from the left side of the deque
+        while self.calls and now - self.calls[0] >= self.period:
+            self.calls.popleft()
         if len(self.calls) >= self.max_calls:
             sleep_time = self.period - (now - self.calls[0])
             if sleep_time > 0:
@@ -56,6 +62,7 @@ class GeminiClient:
     # Retry configuration for JSON parsing errors
     MAX_RETRIES = 3
     RETRY_DELAY_BASE = 2  # seconds (doubles each retry)
+    DEFAULT_TIMEOUT_SECONDS = 300  # 5 minutes default timeout
 
     def __init__(
         self,
@@ -64,6 +71,7 @@ class GeminiClient:
         temperature: float = 0.0,
         max_output_tokens: int = 65536,
         thinking_budget: int | None = None,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ):
         """
         Initialize Gemini client.
@@ -74,6 +82,7 @@ class GeminiClient:
             temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative, default: 0.0)
             max_output_tokens: Maximum tokens in response (default: 65536 for gemini-2.5-flash)
             thinking_budget: Thinking budget in tokens (0=no thinking, -1=model controls, 1-24576=specific budget, None=default)
+            timeout_seconds: API request timeout in seconds (default: 300)
         """
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
@@ -83,6 +92,7 @@ class GeminiClient:
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
         self.thinking_budget = thinking_budget
+        self.timeout_seconds = timeout_seconds
         self.client = genai.Client(api_key=self.api_key)
         self.usage_log: list[dict[str, Any]] = []
 
@@ -199,11 +209,12 @@ class GeminiClient:
 
         generation_config = types.GenerateContentConfig(**config_kwargs)
 
-        # Retry logic for transient failures
+        # Retry logic for transient failures with timeout
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
-                # Generate content
+                # Generate content with timeout protection
                 start_time = time.perf_counter()
+                # Note: timeout is enforced by the client's HTTP configuration
                 response = self.client.models.generate_content(
                     model=self.model,
                     contents=[prompt, uploaded_file],

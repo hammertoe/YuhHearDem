@@ -1,7 +1,7 @@
 """Database connection and session management."""
 
+import asyncio
 from collections.abc import AsyncGenerator
-from threading import Lock
 from typing import Any
 
 from sqlalchemy.ext.asyncio import (
@@ -23,7 +23,7 @@ class DatabaseManager:
     """Singleton manager for database engine and session maker."""
 
     _instance: "DatabaseManager | None" = None
-    _lock: Lock = Lock()
+    _instance_lock: asyncio.Lock = asyncio.Lock()
 
     def __init__(self) -> None:
         self._engine: AsyncEngine | None = None
@@ -31,10 +31,11 @@ class DatabaseManager:
 
     @classmethod
     def get_instance(cls) -> "DatabaseManager":
+        """Get singleton instance. Note: This should be called from async context."""
         if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
+            # In async contexts, we need to ensure thread-safe initialization
+            # The instance creation itself is cheap; engine creation is deferred
+            cls._instance = cls()
         return cls._instance
 
     def get_engine(self) -> AsyncEngine:

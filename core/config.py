@@ -23,9 +23,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     # Database
-    database_url: str = Field(
-        default="postgresql+asyncpg://postgres:password@localhost:5432/yuhheardem"
-    )
+    # Note: DATABASE_URL must be set via environment variable in production
+    database_url: str = Field(default="", description="PostgreSQL connection URL (required)")
     database_pool_size: int = Field(default=20)
     database_max_overflow: int = Field(default=10)
 

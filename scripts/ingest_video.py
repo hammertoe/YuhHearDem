@@ -923,9 +923,8 @@ INSTRUCTIONS:
     ) -> str:
         sitting = sitting_number or "0"
         try:
-            sitting_num = int(
-                sitting.replace("st", "").replace("nd", "").replace("rd", "").replace("th", "")
-            )
+            # Simplified ordinal stripping using regex
+            sitting_num = int(re.sub(r"(st|nd|rd|th)$", "", sitting, flags=re.IGNORECASE))
         except (ValueError, AttributeError):
             sitting_num = 0
 
@@ -951,6 +950,11 @@ INSTRUCTIONS:
         return minutes * 60 + seconds
 
     def _extract_youtube_id(self, url: str) -> str:
+        # Security: Limit URL length to prevent ReDoS attacks
+        MAX_URL_LENGTH = 2048
+        if len(url) > MAX_URL_LENGTH:
+            raise ValueError(f"URL too long (max {MAX_URL_LENGTH} characters)")
+
         if not url.startswith(("http://", "https://")):
             raise ValueError(f"Invalid YouTube URL scheme: {url}")
 
