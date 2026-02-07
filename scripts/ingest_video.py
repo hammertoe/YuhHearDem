@@ -164,7 +164,9 @@ class VideoIngestor:
             )
 
             matcher = VideoPaperMatcher()
-            match_result = matcher.match_video(video_metadata, order_papers)
+            match_result = matcher.match_video(
+                video_metadata, order_papers, auto_accept_threshold=70
+            )
 
             if match_result.is_ambiguous:
                 raise ValueError(
