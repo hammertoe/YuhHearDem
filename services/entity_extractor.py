@@ -457,6 +457,12 @@ class EntityExtractor:
         # Build entity-focused prompt
         prompt = self._build_entity_extraction_prompt(seed_entities)
 
+        print("\n" + "=" * 80)
+        print("ENTITY EXTRACTION PROMPT (Pass 1):")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80 + "\n")
+
         # Convert transcript to dict
         transcript_data = self._serialize_transcript(transcript)
 
@@ -492,6 +498,12 @@ class EntityExtractor:
 
         # Build relationship-focused prompt with entity list
         prompt = self._build_relationship_extraction_prompt(entities)
+
+        print("\n" + "=" * 80)
+        print("RELATIONSHIP EXTRACTION PROMPT (Pass 2):")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80 + "\n")
 
         # Convert transcript to dict
         transcript_data = self._serialize_transcript(transcript)
