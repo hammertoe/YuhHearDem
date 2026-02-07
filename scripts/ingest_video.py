@@ -765,6 +765,10 @@ INSTRUCTIONS:
         relationships = list(extraction.relationships)
 
         await self._upsert_entities(entities)
+
+        # Create entity name lookup for evidence matching
+        entity_name_lookup = {entity.entity_id: entity.canonical_name for entity in entities}
+
         await self._replace_relationships_and_evidence(
             video,
             session_id,
@@ -772,6 +776,7 @@ INSTRUCTIONS:
             transcript,
             relationships,
             segment_id_lookup,
+            entity_name_lookup,
         )
 
     async def _upsert_entities(self, entities: list[Entity]) -> None:
@@ -808,6 +813,7 @@ INSTRUCTIONS:
         transcript: SessionTranscript,
         relationships: list[ExtractedRelationship],
         segment_id_lookup: dict[tuple[int, int, int], str],
+        entity_name_lookup: dict[str, str],
     ) -> None:
         await self.db.execute(
             delete(RelationshipEvidence).where(RelationshipEvidence.video_id == youtube_id)
@@ -830,7 +836,9 @@ INSTRUCTIONS:
                 )
             )
 
-            segment_ids = self._find_segments_for_relationship(transcript, rel, segment_id_lookup)
+            segment_ids = self._find_segments_for_relationship(
+                transcript, rel, segment_id_lookup, entity_name_lookup
+            )
 
             if not segment_ids:
                 continue
@@ -873,12 +881,13 @@ INSTRUCTIONS:
         transcript: SessionTranscript,
         relationship: ExtractedRelationship,
         segment_id_lookup: dict[tuple[int, int, int], str],
+        entity_name_lookup: dict[str, str],
     ) -> list[str]:
         """Find segments containing relationship evidence."""
         segment_ids = set()
         relationship_text = (relationship.evidence or "").lower()
-        source_name = relationship.source_id.lower()
-        target_name = relationship.target_id.lower()
+        source_name = entity_name_lookup.get(relationship.source_id, "").lower()
+        target_name = entity_name_lookup.get(relationship.target_id, "").lower()
 
         for agenda_idx, agenda in enumerate(transcript.agenda_items):
             for block_idx, speech in enumerate(agenda.speech_blocks or []):
