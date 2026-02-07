@@ -528,6 +528,12 @@ INSTRUCTIONS:
 - Include all content
 - ENSURE CORRECT TIMESTAMP FORMAT FOR EVERY SENTENCE"""
 
+        print("\n" + "=" * 80)
+        print("TRANSCRIPTION PROMPT:")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80 + "\n")
+
         response = self.client.analyze_video_with_transcript(
             video_url=youtube_url,
             prompt=prompt,
