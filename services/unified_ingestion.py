@@ -90,6 +90,7 @@ class UnifiedIngestionPipeline:
         fps: float = 0.5,
         end_time: int | None = None,
         force: bool = False,
+        quality: str | None = None,
     ) -> IngestionResult:
         """
         Ingest a parliamentary video with full processing pipeline.
@@ -104,6 +105,7 @@ class UnifiedIngestionPipeline:
             fps: Frames per second for video analysis
             end_time: Only process video up to this time in seconds
             force: Re-ingest even if session exists
+            quality: Video quality level (low, medium, high)
 
         Returns:
             IngestionResult with statistics
@@ -149,6 +151,7 @@ class UnifiedIngestionPipeline:
                 order_paper_speakers=order_paper_speakers,
                 fps=fps,
                 end_time=end_time,
+                quality=quality,
             )
 
             if self.verbose:
@@ -271,6 +274,7 @@ class UnifiedIngestionPipeline:
         order_paper_speakers: list[dict] | None,
         fps: float,
         end_time: int | None,
+        quality: str | None,
     ) -> StructuredTranscript:
         """Extract structured transcript using constrained decoding."""
         if self.verbose:
@@ -325,6 +329,7 @@ Important:
             response_schema=TRANSCRIPT_SCHEMA,
             fps=fps,
             end_time=end_time,
+            quality=quality,
             stage="structured_transcription",
         )
 

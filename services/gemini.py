@@ -248,6 +248,7 @@ class GeminiClient:
         fps: float = 0.5,
         start_time: int | None = None,
         end_time: int | None = None,
+        quality: str | None = None,
         stage: str = "video_transcription",
     ) -> dict[str, Any]:
         """
@@ -260,6 +261,7 @@ class GeminiClient:
             fps: Frames per second to sample (lower = fewer tokens)
             start_time: Optional start time in seconds
             end_time: Optional end time in seconds
+            quality: Video quality level (low, medium, high)
 
         Returns:
             Parsed JSON response from model
@@ -282,6 +284,17 @@ class GeminiClient:
 
         generation_config = types.GenerateContentConfig(**config_kwargs)
 
+        # Map quality to PartMediaResolutionLevel
+        quality_map = {
+            "low": types.PartMediaResolutionLevel.MEDIA_RESOLUTION_LOW,
+            "medium": types.PartMediaResolutionLevel.MEDIA_RESOLUTION_MEDIUM,
+            "high": types.PartMediaResolutionLevel.MEDIA_RESOLUTION_HIGH,
+        }
+        resolution_level = quality_map.get(quality) if quality else None
+        media_resolution = (
+            types.PartMediaResolution(level=resolution_level) if resolution_level else None
+        )
+
         # Build video metadata with FPS and optional time segments
         start_offset = f"{start_time}s" if start_time is not None else None
         end_offset = f"{end_time}s" if end_time is not None else None
@@ -291,13 +304,18 @@ class GeminiClient:
             end_offset=end_offset,
         )
 
+        # Build video part with optional quality setting
+        video_part_kwargs = {
+            "file_data": types.FileData(file_uri=video_url),
+            "video_metadata": video_metadata,
+        }
+        if media_resolution:
+            video_part_kwargs["media_resolution"] = media_resolution
+
         # Build content with proper structure for YouTube URL
         content = types.Content(
             parts=[
-                types.Part(
-                    file_data=types.FileData(file_uri=video_url),
-                    video_metadata=video_metadata,
-                ),
+                types.Part(**video_part_kwargs),
                 types.Part(text=prompt),
             ]
         )

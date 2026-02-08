@@ -48,7 +48,7 @@ async def ingest_video(
     minutes: int | None,
     verbose: bool,
     no_thinking: bool,
-    force: bool = False,
+    quality: str | None,
 ) -> None:
     """Ingest a single video."""
     session_maker = get_session_maker()
@@ -67,6 +67,8 @@ async def ingest_video(
         if no_thinking:
             print(f"  Thinking mode: DISABLED")
         print(f"  FPS: {fps}")
+        if quality:
+            print(f"  Video Quality: {quality}")
         if verbose:
             print(f"  Verbose mode: ENABLED")
         print()
@@ -128,6 +130,7 @@ async def ingest_video(
                 order_paper_speakers=order_paper_speakers,
                 fps=fps,
                 end_time=end_time,
+                quality=quality,
             )
 
             print("\nIngestion Complete!")
@@ -211,6 +214,12 @@ def main():
         action="store_true",
         help="Force re-ingestion even if session already exists",
     )
+    parser.add_argument(
+        "--quality",
+        type=str,
+        choices=["low", "medium", "high"],
+        help="Video quality level (low, medium, high)",
+    )
 
     args = parser.parse_args()
 
@@ -240,6 +249,7 @@ def main():
             verbose=args.verbose,
             no_thinking=args.no_thinking,
             force=args.force,
+            quality=args.quality,
         )
     )
 
