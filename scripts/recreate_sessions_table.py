@@ -23,8 +23,8 @@ async def recreate_sessions_table():
     from models.session import Session
 
     async with engine.begin() as conn:
-        await conn.run_sync(lambda: Session.metadata.create_all(conn))
-        print("✓ Created sessions table with raw_transcript_json column")
+        await conn.run_sync(Session.metadata.create_all, conn)
+    print("✓ Created sessions table with raw_transcript_json column")
 
     print("\nSessions table successfully recreated!")
     print("You can now run the ingestion script.")
