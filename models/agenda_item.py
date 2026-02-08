@@ -15,7 +15,10 @@ class AgendaItem(Base):
 
     agenda_item_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     session_id: Mapped[str] = mapped_column(
-        String(100), ForeignKey("sessions.session_id"), nullable=False, index=True
+        String(100),
+        ForeignKey("sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     agenda_index: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
