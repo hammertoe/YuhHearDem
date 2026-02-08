@@ -45,26 +45,45 @@ async def ingest_video(
     sitting_number: str | None,
     order_paper_path: str | None,
     fps: float,
+    minutes: int | None,
+    verbose: bool,
+    no_thinking: bool,
 ) -> None:
     """Ingest a single video."""
     session_maker = get_session_maker()
 
     async with session_maker() as session:
-        print(f"Initializing ingestion pipeline...")
+        print("=" * 60)
+        print("Ingestion Pipeline Configuration")
+        print("=" * 60)
         print(f"  Video: {video_url}")
         print(f"  Date: {session_date}")
         print(f"  Chamber: {chamber}")
         if sitting_number:
             print(f"  Sitting: {sitting_number}")
+        if minutes:
+            print(f"  Time limit: {minutes} minutes")
+        if no_thinking:
+            print(f"  Thinking mode: DISABLED")
+        print(f"  FPS: {fps}")
+        if verbose:
+            print(f"  Verbose mode: ENABLED")
         print()
 
         # Initialize Gemini client
+        thinking_budget = None if no_thinking else -1  # -1 = model controls
         gemini_client = GeminiClient(
             api_key=settings.google_api_key,
             model="gemini-3-flash-preview",
             temperature=0.0,
             max_output_tokens=65536,
+            thinking_budget=thinking_budget,
         )
+
+        print(f"Using model: {gemini_client.model}")
+        if verbose:
+            print(f"Thinking budget: {thinking_budget if thinking_budget else 'Model default'}")
+        print()
 
         # Load order paper speakers if provided
         order_paper_speakers = None
@@ -84,12 +103,20 @@ async def ingest_video(
         pipeline = UnifiedIngestionPipeline(
             session=session,
             gemini_client=gemini_client,
+            verbose=verbose,
         )
 
-        print("Starting ingestion...")
+        print("=" * 60)
+        print("Starting Ingestion")
+        print("=" * 60)
         print()
 
         try:
+            # Calculate end time if minutes specified
+            end_time = minutes * 60 if minutes else None
+            if verbose and end_time:
+                print(f"Processing first {minutes} minutes (0 to {end_time}s)")
+
             # Run ingestion
             result = await pipeline.ingest_video(
                 video_url=video_url,
@@ -99,6 +126,7 @@ async def ingest_video(
                 sitting_number=sitting_number,
                 order_paper_speakers=order_paper_speakers,
                 fps=fps,
+                end_time=end_time,
             )
 
             print("\nIngestion Complete!")
@@ -161,6 +189,21 @@ def main():
         type=float,
         default=0.5,
         help="Frames per second for video analysis (default: 0.5)",
+    )
+    parser.add_argument(
+        "--minutes",
+        type=int,
+        help="Only ingest first X minutes of video (for quick testing)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed progress information",
+    )
+    parser.add_argument(
+        "--no-thinking",
+        action="store_true",
+        help="Disable LLM thinking mode for faster processing",
     )
 
     args = parser.parse_args()

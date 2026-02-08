@@ -60,6 +60,7 @@ class UnifiedIngestionPipeline:
         self,
         session: AsyncSession,
         gemini_client: GeminiClient,
+        verbose: bool = False,
     ) -> None:
         """
         Initialize ingestion pipeline.
@@ -67,11 +68,13 @@ class UnifiedIngestionPipeline:
         Args:
             session: Database session
             gemini_client: Gemini client for LLM operations
+            verbose: Enable detailed logging
         """
         self.session = session
         self.gemini_client = gemini_client
         self.speaker_service = SpeakerService(session)
         self.chunked_processor = ChunkedTranscriptProcessor(gemini_client)
+        self.verbose = verbose
 
     async def ingest_video(
         self,
@@ -82,6 +85,7 @@ class UnifiedIngestionPipeline:
         sitting_number: str | None = None,
         order_paper_speakers: list[dict] | None = None,
         fps: float = 0.5,
+        end_time: int | None = None,
     ) -> IngestionResult:
         """
         Ingest a parliamentary video with full processing pipeline.
@@ -94,6 +98,7 @@ class UnifiedIngestionPipeline:
             sitting_number: Sitting number if known
             order_paper_speakers: Known speakers from order paper
             fps: Frames per second for video analysis
+            end_time: Only process video up to this time in seconds
 
         Returns:
             IngestionResult with statistics
@@ -105,6 +110,9 @@ class UnifiedIngestionPipeline:
 
         try:
             # Step 1: Extract structured transcript with constrained decoding
+            if self.verbose:
+                print("[Step 1/6] Extracting structured transcript...")
+
             transcript = await self._extract_transcript(
                 video_url=video_url,
                 session_date=session_date,
@@ -112,9 +120,17 @@ class UnifiedIngestionPipeline:
                 sitting_number=sitting_number,
                 order_paper_speakers=order_paper_speakers,
                 fps=fps,
+                end_time=end_time,
             )
 
+            if self.verbose:
+                print(f"[Step 1/6] ✓ Extracted {len(transcript.agenda_items)} agenda items")
+                print()
+
             # Step 2: Create/update session
+            if self.verbose:
+                print("[Step 2/6] Creating session record...")
+
             await self._create_session(
                 session_id=result.session_id,
                 session_date=session_date,
@@ -123,7 +139,14 @@ class UnifiedIngestionPipeline:
                 transcript=transcript,
             )
 
+            if self.verbose:
+                print(f"[Step 2/6] ✓ Session created: {result.session_id}")
+                print()
+
             # Step 3: Create/update video record
+            if self.verbose:
+                print("[Step 3/6] Creating video record...")
+
             await self._create_video(
                 video_id=video_id,
                 session_id=result.session_id,
@@ -131,7 +154,14 @@ class UnifiedIngestionPipeline:
                 transcript=transcript,
             )
 
+            if self.verbose:
+                print(f"[Step 3/6] ✓ Video record created: {video_id}")
+                print()
+
             # Step 4: Process speakers with deduplication
+            if self.verbose:
+                print("[Step 4/6] Processing speakers with deduplication...")
+
             speaker_stats = await self._process_speakers(
                 transcript=transcript,
                 chamber=chamber,
@@ -140,14 +170,32 @@ class UnifiedIngestionPipeline:
             result.speakers_created = speaker_stats["created"]
             result.speakers_matched = speaker_stats["matched"]
 
+            if self.verbose:
+                print(
+                    f"[Step 4/6] ✓ Speakers: Created={result.speakers_created}, Matched={result.speakers_matched}"
+                )
+                print()
+
             # Step 5: Create agenda items
+            if self.verbose:
+                print("[Step 5/6] Creating agenda items...")
+
             await self._create_agenda_items(
                 transcript=transcript,
                 session_id=result.session_id,
             )
             result.agenda_items_created = len(transcript.agenda_items)
 
+            if self.verbose:
+                print(f"[Step 5/6] ✓ Created {result.agenda_items_created} agenda items")
+                print()
+
             # Step 6: Extract entities and relationships using chunked processing
+            if self.verbose:
+                print(
+                    "[Step 6/6] Extracting knowledge graph (entities, relationships, mentions)..."
+                )
+
             entity_stats = await self._extract_knowledge_graph(
                 transcript=transcript,
                 session_id=result.session_id,
@@ -156,6 +204,12 @@ class UnifiedIngestionPipeline:
             result.entities_extracted = entity_stats["entities"]
             result.relationships_extracted = entity_stats["relationships"]
             result.mentions_created = entity_stats["mentions"]
+
+            if self.verbose:
+                print(
+                    f"[Step 6/6] ✓ Extracted {result.entities_extracted} entities, {result.relationships_extracted} relationships, {result.mentions_created} mentions"
+                )
+                print()
 
             await self.session.commit()
 
@@ -174,13 +228,21 @@ class UnifiedIngestionPipeline:
         sitting_number: str | None,
         order_paper_speakers: list[dict] | None,
         fps: float,
+        end_time: int | None,
     ) -> StructuredTranscript:
         """Extract structured transcript using constrained decoding."""
+        if self.verbose:
+            print(f"[Transcript] Extracting from: {video_url}")
+            print(f"[Transcript] End time: {end_time}s" if end_time else "[Transcript] Full video")
+            print()
+
         # Build prompt with context
         speaker_context = ""
         if order_paper_speakers:
             speaker_names = [s.get("name", "") for s in order_paper_speakers]
             speaker_context = f"\n\nExpected speakers: {', '.join(speaker_names)}"
+            if self.verbose:
+                print(f"[Transcript] Expected speakers: {', '.join(speaker_names)}")
 
         prompt = f"""Transcribe this Barbados parliamentary session video.
 
@@ -211,13 +273,23 @@ Important:
 """
 
         # Extract with structured output
+        if self.verbose:
+            print(f"[Transcript] Sending to Gemini API...")
+            print()
+
         response = self.gemini_client.analyze_video_with_transcript(
             video_url=video_url,
             prompt=prompt,
             response_schema=TRANSCRIPT_SCHEMA,
             fps=fps,
+            end_time=end_time,
             stage="structured_transcription",
         )
+
+        if self.verbose:
+            print(f"[Transcript] Received response from Gemini")
+            print(f"[Transcript] Parsing transcript structure...")
+            print()
 
         # Convert to StructuredTranscript
         transcript = StructuredTranscript.from_dict(
@@ -335,8 +407,16 @@ Important:
         all_relationships: list[Relationship] = []
         all_mentions: list[Mention] = []
 
+        if self.verbose:
+            print(f"[KG Extraction] Processing {len(transcript.agenda_items)} agenda items")
+            print()
+
         # Process each agenda item
         for agenda_idx, agenda_item in enumerate(transcript.agenda_items):
+            if self.verbose:
+                print(
+                    f"[KG Extraction] Agenda item {agenda_idx + 1}/{len(transcript.agenda_items)}: {agenda_item.topic_title}"
+                )
             # Convert to speech blocks for chunked processor
             speech_blocks = [
                 SpeechBlock(
@@ -354,10 +434,18 @@ Important:
             ]
 
             # Process in chunks
+            if self.verbose:
+                print(f"[KG Extraction]   Processing {len(speech_blocks)} speech blocks...")
+
             chunk_entities, chunk_relationships = self.chunked_processor.process_transcript(
                 agenda_item_title=agenda_item.topic_title,
                 speech_blocks=speech_blocks,
             )
+
+            if self.verbose:
+                print(
+                    f"[KG Extraction]   Found {len(chunk_entities)} entities, {len(chunk_relationships)} relationships"
+                )
 
             # Convert chunk entities to database entities
             for chunk_entity in chunk_entities:
