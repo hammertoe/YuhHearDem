@@ -14,7 +14,7 @@ class EmbeddingService:
         """
         self.gemini_client = gemini_client
         if gemini_client:
-            self.model_name = "text-multilingual-embedding"  # v1beta compatible model  # Note: Using v1beta, model names differ
+            self.model_name = "text-embedding-004"  # v1beta compatible model
             self.model_version = "gemini"
         else:
             self.model_name = "all-mpnet-base-v2"
