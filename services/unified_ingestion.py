@@ -622,9 +622,12 @@ Important:
                     if mention:
                         all_mentions.append(mention)
 
+            # Flush all entities to ensure they exist in the database
+            await self.session.flush()
+
             # Convert chunk relationships to database relationships
             for chunk_rel in chunk_relationships:
-                relationship = self._create_relationship(
+                relationship = await self._create_relationship(
                     chunk_rel=chunk_rel,
                     agenda_idx=agenda_idx,
                     speech_blocks=speech_blocks,
@@ -724,7 +727,30 @@ Important:
         self.session.add(mention)
         return mention
 
-    def _create_relationship(
+    async def _ensure_entity_exists(self, entity_id: str) -> Entity:
+        """Ensure an entity exists in the database, creating if necessary."""
+        result = await self.session.execute(select(Entity).where(Entity.entity_id == entity_id))
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            return existing
+
+        # Create a minimal entity if it doesn't exist
+        entity = Entity(
+            entity_id=entity_id,
+            name=entity_id,
+            canonical_name=entity_id,
+            entity_type="unknown",
+            description=f"Auto-created entity referenced in relationships",
+            aliases=[],
+            confidence=0.5,
+            source="extraction",
+        )
+        self.session.add(entity)
+        await self.session.flush()
+        return entity
+
+    async def _create_relationship(
         self,
         chunk_rel: Any,
         agenda_idx: int,
@@ -757,6 +783,10 @@ Important:
 
         # Convert timestamp to seconds
         ts_seconds = convert_time_to_seconds(target_sentence.start_time)
+
+        # Ensure source and target entities exist
+        await self._ensure_entity_exists(chunk_rel.source_id)
+        await self._ensure_entity_exists(chunk_rel.target_id)
 
         relationship = Relationship(
             source_entity_id=chunk_rel.source_id,
