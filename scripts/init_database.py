@@ -11,6 +11,11 @@ Environment Variables:
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.database import init_db, get_engine
 from sqlalchemy import text

@@ -16,7 +16,12 @@ Environment Variables:
 
 import asyncio
 import sys
+from pathlib import Path
 
+# Add project root to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
