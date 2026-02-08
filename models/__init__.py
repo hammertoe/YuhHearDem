@@ -8,6 +8,7 @@ from models.order_paper import OrderPaper
 from models.relationship import Relationship
 from models.session import Session
 from models.speaker import Speaker
+from models.transcript_sentence import TranscriptSentence
 from models.video import Video
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "Session",
     "OrderPaper",
     "Mention",
+    "TranscriptSentence",
 ]
