@@ -230,6 +230,9 @@ def main():
             sitting_number=args.sitting,
             order_paper_path=args.order_paper,
             fps=args.fps,
+            minutes=args.minutes,
+            verbose=args.verbose,
+            no_thinking=args.no_thinking,
         )
     )
 
