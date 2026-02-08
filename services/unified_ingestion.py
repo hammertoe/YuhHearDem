@@ -477,16 +477,7 @@ Important:
                     self.session.add(transcript_sentence)
                     total_sentences += 1
 
-        # Generate embeddings for all sentences (batch)
-        if self.verbose:
-            print(f"[Transcript Sentences] Generating embeddings for {total_sentences} sentences")
-
-        # Get all sentences we just added
-        sentences_to_embed = await self.session.flush()
-
-        # Generate embeddings (will be saved by database trigger or separate service)
-        # For now, we'll skip embedding generation to keep pipeline fast
-        # UI can call a separate embedding generation script if needed
+        await self.session.flush()
 
         if self.verbose:
             print(f"[Transcript Sentences] ✓ Created {total_sentences} transcript sentences")
