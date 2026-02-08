@@ -499,7 +499,7 @@ class GeminiClient:
             List of embedding vectors
         """
         if model is None:
-            model = "text-embedding-004"  # Default model for v1beta
+            model = "text-multilingual-embedding"  # Default model for v1beta
 
         start_time_perf = time.perf_counter()
         response = self.client.models.embed_content(

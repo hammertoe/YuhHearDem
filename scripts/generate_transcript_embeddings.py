@@ -153,7 +153,6 @@ async def generate_transcript_embeddings(
         # Initialize Gemini client for embeddings
         gemini_client = GeminiClient(
             api_key=settings.google_api_key,
-            model="text-embedding-004",  # Fast embedding model
         )
         embedding_service = EmbeddingService(gemini_client)
 
