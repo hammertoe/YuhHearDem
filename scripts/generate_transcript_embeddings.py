@@ -2,7 +2,7 @@
 
 This script:
 1. Fetches transcript sentences with NULL embeddings
-2. Generates vector embeddings in batches (default: 100)
+2. Generates vector embeddings using local sentence-transformers model
 3. Generates full-text search vectors
 4. Updates database with both
 
@@ -11,7 +11,6 @@ Usage:
 
 Environment Variables:
     DATABASE_URL: PostgreSQL connection string
-    GOOGLE_API_KEY: Gemini API key
 """
 
 import asyncio
@@ -25,13 +24,9 @@ from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import to_tsvector
 
-from core.config import get_settings
 from core.database import get_session_maker
 from models.transcript_sentence import TranscriptSentence
 from services.embeddings import EmbeddingService
-from services.gemini import GeminiClient
-
-settings = get_settings()
 
 
 async def generate_embeddings_for_sentence(
@@ -150,11 +145,9 @@ async def generate_transcript_embeddings(
         print(f"Batch size: {batch_size}")
         print()
 
-        # Initialize Gemini client for embeddings
-        gemini_client = GeminiClient(
-            api_key=settings.google_api_key,
-        )
-        embedding_service = EmbeddingService(gemini_client)
+        # Use local sentence-transformers model (no API calls needed)
+        print("Using local sentence-transformers model (all-mpnet-base-v2)...")
+        embedding_service = EmbeddingService()
 
         # Process in batches
         processed_total = 0
