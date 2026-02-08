@@ -72,7 +72,7 @@ async def ingest_video(
         print()
 
         # Initialize Gemini client
-        thinking_budget = None if no_thinking else -1  # -1 = model controls
+        thinking_budget = 0 if no_thinking else -1  # 0=no thinking, -1=model controls
         gemini_client = GeminiClient(
             api_key=settings.google_api_key,
             model="gemini-3-flash-preview",
