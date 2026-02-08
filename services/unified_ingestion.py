@@ -393,15 +393,20 @@ Important:
         video_url: str,
         transcript: StructuredTranscript,
     ) -> None:
-        """Create video record."""
-        video = Video(
-            video_id=video_id,
-            session_id=session_id,
-            url=video_url,
-            platform="youtube",
-        )
-        self.session.add(video)
-        await self.session.flush()
+        """Create video record if it doesn't exist."""
+        existing = (
+            await self.session.execute(select(Video).where(Video.video_id == video_id))
+        ).scalar_one_or_none()
+
+        if not existing:
+            video = Video(
+                video_id=video_id,
+                session_id=session_id,
+                url=video_url,
+                platform="youtube",
+            )
+            self.session.add(video)
+            await self.session.flush()
 
     async def _create_transcript_sentences(
         self,
