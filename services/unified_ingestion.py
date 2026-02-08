@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
@@ -115,8 +115,6 @@ class UnifiedIngestionPipeline:
 
         try:
             # Check if session already exists
-            from sqlalchemy import select
-
             existing_session = (
                 await self.session.execute(
                     select(Session).where(Session.session_id == result.session_id)
@@ -131,6 +129,14 @@ class UnifiedIngestionPipeline:
 
                 result.errors.append(f"Session {result.session_id} already exists")
                 return result
+
+            if force:
+                if self.verbose:
+                    print(f"[Force] Cleaning up existing data for {result.session_id}...")
+                await self._cleanup_session_data(result.session_id)
+                if self.verbose:
+                    print(f"[Force] ✓ Cleanup complete")
+                    print()
             # Step 1: Extract structured transcript with constrained decoding
             if self.verbose:
                 print("[Step 1/6] Extracting structured transcript...")
@@ -385,6 +391,19 @@ Important:
         )
         self.session.add(session)
         await self.session.flush()
+
+    async def _cleanup_session_data(self, session_id: str) -> None:
+        """Delete all data related to a session (cascade handles most)."""
+        await self.session.execute(delete(Mention).where(Mention.session_id == session_id))
+        await self.session.execute(
+            delete(Relationship).where(Relationship.session_id == session_id)
+        )
+        await self.session.execute(
+            delete(TranscriptSentenceModel).where(TranscriptSentenceModel.session_id == session_id)
+        )
+        await self.session.execute(delete(AgendaItem).where(AgendaItem.session_id == session_id))
+        await self.session.execute(delete(Session).where(Session.session_id == session_id))
+        await self.session.commit()
 
     async def _create_video(
         self,
