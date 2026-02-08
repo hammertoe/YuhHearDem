@@ -17,7 +17,7 @@ class EmbeddingService:
             self.model_name = "text-multilingual-embedding"  # v1beta compatible model  # Note: Using v1beta, model names differ
             self.model_version = "gemini"
         else:
-            self.model_name = "all-MiniLM-L6-v2"
+            self.model_name = "all-mpnet-base-v2"
             self.model_version = "sentence-transformers"
 
     def generate_embeddings(
@@ -31,7 +31,7 @@ class EmbeddingService:
             texts: List of text strings to embed
 
         Returns:
-            List of embedding vectors (384 dimensions each)
+            List of embedding vectors (768 dimensions each)
         """
         if self.gemini_client:
             return self.gemini_client.embed_texts(texts)
@@ -39,7 +39,7 @@ class EmbeddingService:
         try:
             from sentence_transformers import SentenceTransformer
 
-            model_name = "all-MiniLM-L6-v2"
+            model_name = "all-mpnet-base-v2"
             model = SentenceTransformer(model_name)
 
             all_embeddings = model.encode(

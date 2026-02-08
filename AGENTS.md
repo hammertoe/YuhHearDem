@@ -46,7 +46,7 @@ YuhHearDem/
 | File | Purpose |
 |------|---------|
 | `scripts/ingest_order_paper.py` | PDF ingestion CLI |
-| `scripts/ingest_video.py` | Video ingestion CLI |
+| `scripts/ingest_video_unified.py` | Video ingestion CLI |
 | `scripts/run_full_ingestion.py` | Full ingestion pipeline |
 | `scripts/daily_pipeline.py` | Daily automation |
 | `scripts/scrape_session_papers.py` | Web scraper |
@@ -77,7 +77,7 @@ python scripts/ingest_order_paper.py data/papers/session_paper.pdf
 ### Ingest Videos
 
 ```bash
-python scripts/ingest_video.py --mapping data/video_mapping.json
+python scripts/ingest_video_unified.py --mapping data/video_mapping.json
 ```
 
 ### Run Tests

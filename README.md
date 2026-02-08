@@ -16,7 +16,8 @@ YuhHearDem uses advanced NLP techniques to:
 
 - **Ingestion**: Python 3.13 scripts (async)
 - **Database**: PostgreSQL 16 with pgvector extension
-- **NLP**: spaCy, Google Gemini API, sentence-transformers
+- **NLP**: Google Gemini API with constrained decoding
+- **Vector Embeddings**: sentence-transformers (all-mpnet-base-v2)
 - **Video Processing**: YouTube URLs processed directly by Gemini API (no downloads)
 
 Note: The web UI and API have been moved to a separate package. This repository focuses on scraping and ingestion tooling.
@@ -36,13 +37,13 @@ cp .env.example .env
 docker-compose up -d
 
 # 3. Initialize schema
-python -c "import asyncio; from core.database import init_db; asyncio.run(init_db())"
+python scripts/init_database.py
 
 # 4. Ingest data (single video)
-python scripts/ingest_video.py --url 'https://www.youtube.com/watch?v=VIDEO_ID' --no-thinking
-
-# Or ingest from mapping file
-python scripts/ingest_video.py --mapping data/video_mapping.json
+python scripts/ingest_video_unified.py \
+  --url 'https://www.youtube.com/watch?v=VIDEO_ID' \
+  --date 2024-01-15 \
+  --chamber senate
 ```
 
 ### Local Development
@@ -105,6 +106,8 @@ pytest --cov=core --cov=models --cov=parsers --cov=services --cov=scripts --cov-
 pytest tests/test_specific_file.py::test_function
 ```
 
+**Note:** Test suite was significantly reduced during cleanup (2025-02-07). Tests for the unified pipeline need to be added. See [CLEANUP_SUMMARY.md](./CLEANUP_SUMMARY.md) for details.
+
 ### Code Quality
 
 ```bash
@@ -158,8 +161,8 @@ DEBUG=True|False
 LOG_LEVEL=INFO
 
 # Vector Search
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-EMBEDDING_DIMENSIONS=384
+EMBEDDING_MODEL=all-mpnet-base-v2
+EMBEDDING_DIMENSIONS=768
 
 # spaCy
 SPACY_MODEL=en_core_web_trf
@@ -173,16 +176,19 @@ CACHE_TTL_SECONDS=3600
 
 ## Key Features
 
-### Video Ingestion
+### Unified Ingestion Pipeline
 
-- **Auto-detection**: Automatically extracts session date, chamber, and sitting number from video metadata
-- **Multi-method metadata**: Uses Invidious, Piped, oEmbed, and RSS with fallback to YouTube watch page
-- **Fast ingestion**: `--no-thinking` flag disables Gemini thinking mode for faster processing
-- **YouTube URLs only**: Videos are never downloaded - URLs passed directly to Gemini API
-- **Stable IDs**: All IDs are deterministic and stable across re-ingestion
-- **Duplicate detection**: Skips existing videos and segments automatically
+Complete re-architected pipeline with:
 
-### Knowledge Graph Extraction
+- **Structured transcript extraction**: Constrained decoding with JSON schema ensures consistent output
+- **Speaker deduplication**: Three-stage matching (exact → fuzzy with role → surname+role)
+- **UUID-based canonical IDs**: Collision-resistant speaker identification
+- **Chunked processing**: 7-sentence chunks with 2-sentence overlap for better entity coverage
+- **Two-pass extraction**: Entities first, then relationships for higher quality
+- **Sentence-level provenance**: Every relationship has evidence quote and timestamp
+- **Mention tracking**: Every entity mention is tracked with context and speaker
+- **Batch deduplication**: Hybrid fuzzy+vector matching with LLM ambiguity resolution
+- **Entity embeddings**: 768-dimension vectors using all-mpnet-base-v2
 
 - Two-pass extraction (entities first, then relationships)
 - Explicit evidence linking to transcript segments

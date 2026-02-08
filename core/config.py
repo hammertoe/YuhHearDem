@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     gemini_temperature: float = Field(default=0.3)
 
     # Vector Embeddings
-    embedding_model: str = Field(default="all-MiniLM-L6-v2")
-    embedding_dimensions: int = Field(default=384)
+    embedding_model: str = Field(default="all-mpnet-base-v2")
+    embedding_dimensions: int = Field(default=768)
 
     # spaCy
     spacy_model: str = Field(default="en_core_web_trf")

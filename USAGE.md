@@ -5,7 +5,7 @@
 Complete data ingestion pipeline with the following scripts:
 
 ### Primary Scripts
-- `ingest_video.py` - Transcribes videos (using YouTube URLs directly) & saves to database
+- `ingest_video_unified.py` - Transcribes videos (using YouTube URLs directly) & saves to database
 - `scrape_session_papers.py` - Scrapes session papers from parliament website
 - `reset_db.py` - Database reset utility for development
 
@@ -28,7 +28,7 @@ Go to Barbados Parliament YouTube channel and copy a video URL.
 
 ```bash
 # Simplest approach - auto-detects metadata
-python scripts/ingest_video.py \
+python scripts/ingest_video_unified.py \
   --url "https://www.youtube.com/watch?v=VIDEO_ID" \
   --no-thinking
 ```
@@ -62,7 +62,7 @@ Create a mapping file `data/video_mapping.json`:
 Then ingest:
 
 ```bash
-python scripts/ingest_video.py --mapping data/video_mapping.json --no-thinking
+python scripts/ingest_video_unified.py --mapping data/video_mapping.json --no-thinking
 ```
 
 ### Option 3: Scrape Session Papers (Optional)
@@ -82,10 +82,10 @@ python scripts/scrape_session_papers.py --chamber senate --download
 
 ## Command-Line Options
 
-### `ingest_video.py`
+### `ingest_video_unified.py`
 
 ```bash
-python scripts/ingest_video.py [OPTIONS]
+python scripts/ingest_video_unified.py [OPTIONS]
 
 Options:
   --url URL                 # YouTube URL to ingest
@@ -122,7 +122,7 @@ python scripts/reset_db.py
 
 ## What Each Script Does
 
-### `ingest_video.py`
+### `ingest_video_unified.py`
 
 Primary ingestion script that creates the complete knowledge graph.
 

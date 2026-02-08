@@ -26,12 +26,12 @@ Video ingestion now handles session creation, agenda items, transcription, and k
 
 ```bash
 # Single video URL (YouTube URL passed directly to Gemini - no download)
-python scripts/ingest_video.py \
+python scripts/ingest_video_unified.py \
     --url https://www.youtube.com/watch?v=VIDEO_ID \
     --no-thinking
 
 # From mapping file
-python scripts/ingest_video.py --mapping data/video_mapping.json --no-thinking
+python scripts/ingest_video_unified.py --mapping data/video_mapping.json --no-thinking
 ```
 
 ### 2. Scrape Session Papers (Optional, for context only)
@@ -68,7 +68,7 @@ Relationship evidence is now explicit - no heuristic matching at runtime. Each r
 
 ## Script Details
 
-### `ingest_video.py`
+### `ingest_video_unified.py`
 
 Primary ingestion script that creates a complete knowledge graph.
 

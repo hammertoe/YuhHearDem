@@ -58,7 +58,7 @@ Once you have video URLs:
 #### Single Video Ingestion (Simplest)
 
 ```bash
-python scripts/ingest_video.py \
+python scripts/ingest_video_unified.py \
   --url "https://www.youtube.com/watch?v=VIDEO_ID" \
   --chamber house
 ```
@@ -68,7 +68,7 @@ python scripts/ingest_video.py \
 #### Single Video with Custom Metadata
 
 ```bash
-python scripts/ingest_video.py \
+python scripts/ingest_video_unified.py \
   --url "https://www.youtube.com/watch?v=VIDEO_ID" \
   --chamber house \
   --session-date "2024-01-15" \
@@ -91,7 +91,7 @@ Create a mapping file `data/video_mapping.json`:
 
 Then ingest (YouTube URL processed directly by Gemini - no download needed):
 ```bash
-python scripts/ingest_video.py --mapping data/video_mapping.json
+python scripts/ingest_video_unified.py --mapping data/video_mapping.json
 ```
 
 #### Optional Flags
