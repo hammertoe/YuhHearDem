@@ -6,7 +6,7 @@ from uuid import uuid4, UUID
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID as pg_UUID
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -88,7 +88,7 @@ class TranscriptSentence(Base):
 
     # Full-text search vector for keyword search
     search_vector: Mapped[str | None] = mapped_column(
-        String,
+        TSVECTOR,
         comment="Full-text search vector for keyword queries",
     )
 
