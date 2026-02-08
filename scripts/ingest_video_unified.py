@@ -48,6 +48,7 @@ async def ingest_video(
     minutes: int | None,
     verbose: bool,
     no_thinking: bool,
+    force: bool,
     quality: str | None,
 ) -> None:
     """Ingest a single video."""
