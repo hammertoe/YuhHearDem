@@ -89,6 +89,7 @@ class UnifiedIngestionPipeline:
         order_paper_speakers: list[dict] | None = None,
         fps: float = 0.5,
         end_time: int | None = None,
+        force: bool = False,
     ) -> IngestionResult:
         """
         Ingest a parliamentary video with full processing pipeline.
@@ -102,6 +103,7 @@ class UnifiedIngestionPipeline:
             order_paper_speakers: Known speakers from order paper
             fps: Frames per second for video analysis
             end_time: Only process video up to this time in seconds
+            force: Re-ingest even if session exists
 
         Returns:
             IngestionResult with statistics
@@ -112,6 +114,23 @@ class UnifiedIngestionPipeline:
         )
 
         try:
+            # Check if session already exists
+            from sqlalchemy import select
+
+            existing_session = (
+                await self.session.execute(
+                    select(Session).where(Session.session_id == result.session_id)
+                )
+            ).scalar_one_or_none()
+
+            if existing_session and not force:
+                if self.verbose:
+                    print(f"⚠️  Session {result.session_id} already exists")
+                    print(f"   Skipping ingestion (use --force to reingest)")
+                    print()
+
+                result.errors.append(f"Session {result.session_id} already exists")
+                return result
             # Step 1: Extract structured transcript with constrained decoding
             if self.verbose:
                 print("[Step 1/6] Extracting structured transcript...")

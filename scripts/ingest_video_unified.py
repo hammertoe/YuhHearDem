@@ -48,6 +48,7 @@ async def ingest_video(
     minutes: int | None,
     verbose: bool,
     no_thinking: bool,
+    force: bool = False,
 ) -> None:
     """Ingest a single video."""
     session_maker = get_session_maker()
@@ -205,6 +206,11 @@ def main():
         action="store_true",
         help="Disable LLM thinking mode for faster processing",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-ingestion even if session already exists",
+    )
 
     args = parser.parse_args()
 
@@ -233,6 +239,7 @@ def main():
             minutes=args.minutes,
             verbose=args.verbose,
             no_thinking=args.no_thinking,
+            force=args.force,
         )
     )
 

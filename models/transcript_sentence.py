@@ -5,6 +5,8 @@ from uuid import uuid4, UUID
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID as pg_UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
